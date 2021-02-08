@@ -2,17 +2,12 @@
 # Base image with all dependencies and seiscomp3
 FROM centos:centos7 AS base
 
-# Seiscomp3 dependencies:
-RUN yum install -y \
-    boost \
-    flex \
-    libxml2 \
-    realpath \
-    && yum clean all
-
-# Install seiscomp3:
+# Install seiscomp3 & dependencies:
 ARG SEISCOMP_TARBALL_URL=https://www.seiscomp.de/seiscomp3/downloader/seiscomp3-jakarta-2020.330.02-centos7-x86_64.tar.gz
-RUN cd /opt/ && curl -s $SEISCOMP_TARBALL_URL | tar xfz -
+
+RUN yum install -y boost flex libxml2 realpath \
+    && yum clean all \
+    && curl -s $SEISCOMP_TARBALL_URL | tar -C /opt xfz -
 
 ARG LOCAL_INSTALL_FOLDER=/tmp
 ARG BASEMAP_ARCHIVE_NAME
@@ -22,10 +17,10 @@ ARG ARG_WPHASE_WEB_OUTPUTS_ROOT
 ARG ARG_WPHASE_SAVED_DATASETS_ROOT
 ARG ARG_WPHASE_TEST_DATASETS_ROOT
 ARG ARG_WPHASE_GREENS_FUNCTIONS
-ENV WPHASE_WEB_OUTPUTS_ROOT="$ARG_WPHASE_WEB_OUTPUTS_ROOT"
-ENV WPHASE_SAVED_DATASETS_ROOT="$ARG_WPHASE_SAVED_DATASETS_ROOT"
-ENV WPHASE_TEST_DATASETS_ROOT="$ARG_WPHASE_TEST_DATASETS_ROOT"
-ENV WPHASE_GREENS_FUNCTIONS="$ARG_WPHASE_GREENS_FUNCTIONS"
+ENV WPHASE_WEB_OUTPUTS_ROOT="$ARG_WPHASE_WEB_OUTPUTS_ROOT" \
+    WPHASE_SAVED_DATASETS_ROOT="$ARG_WPHASE_SAVED_DATASETS_ROOT" \
+    WPHASE_TEST_DATASETS_ROOT="$ARG_WPHASE_TEST_DATASETS_ROOT" \
+    WPHASE_GREENS_FUNCTIONS="$ARG_WPHASE_GREENS_FUNCTIONS"
 
 COPY docker/$BASEMAP_ARCHIVE_NAME "$LOCAL_INSTALL_FOLDER"/"$BASEMAP_ARCHIVE_NAME"
 COPY docker/requirements.txt /requirements.txt
@@ -46,19 +41,17 @@ ENV SEISCOMP_ROOT="/opt/seiscomp3" \
     PYTHONPATH="/opt/seiscomp3/lib/python" \
     MANPATH="/opt/seiscomp3/share/man"
 
+# Steps
 # Configure seiscomp completion in bash:
-RUN echo "source /opt/seiscomp3/share/shell-completion/seiscomp.bash" >> /root/.bashrc
-
 # Let seiscomp utilities run without requiring database dependencies:
-RUN echo 'core.plugins = ""' > /opt/seiscomp3/etc/global.cfg
-
 # create required folders for wphase
-RUN install -g "$(id -gn)" -o "$(id -un)" -d \
-    "$WPHASE_GREENS_FUNCTIONS_DIR" \
-    "$WPHASE_WEB_OUTPUTS_ROOT"
+RUN echo "source /opt/seiscomp3/share/shell-completion/seiscomp.bash" >> /root/.bashrc \
+    && echo 'core.plugins = ""' > /opt/seiscomp3/etc/global.cfg \
+    && install -g "$(id -gn)" -o "$(id -un)" -d "$WPHASE_GREENS_FUNCTIONS_DIR" "$WPHASE_WEB_OUTPUTS_ROOT"
 
 # This script is used by both dev and prod to set up for wphase
 COPY docker/configure_wphase_image.sh "$LOCAL_INSTALL_FOLDER"/configure_wphase_image.sh
+
 
 #############################################################################
 # Dev image with auto-installation, to be used with run-or-build-container.sh
@@ -67,6 +60,7 @@ ARG LOCAL_INSTALL_FOLDER=/tmp
 #ARG WPHASE_HOME=/wphase/app
 #ENV WPHASE_HOME="$WPHASE_HOME"
 RUN "$LOCAL_INSTALL_FOLDER"/configure_wphase_image.sh dev
+
 
 ##############################
 # Fully-baked production image

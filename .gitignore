@@ -6,3 +6,5 @@ _Inline/
 /build/
 Wphase.egg*/
 /outputs
+.pytest_cache/
+wphase.code-workspace

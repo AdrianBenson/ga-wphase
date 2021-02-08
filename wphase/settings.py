@@ -10,11 +10,11 @@ specific system.
 """
 
 import os
-import sys
-import multiprocessing as mp
+# import sys
+# import multiprocessing as mp
 
 # Set the number of threads used by OpenBLAS.
-os.environ['OPENBLAS_NUM_THREADS'] = '1'
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
 
 #: Use HDF5 version of Green's functions (the alternative [original] is to use
 #: SAC files).
@@ -24,40 +24,41 @@ USE_HDF5_GREENS_DB = True
 #: where inputs (Green's functions, inventories, saved datasets) can be found
 #: and where outputs will be written.
 WPHASE_HOME = os.environ.get(
-    "WPHASE_HOME",
-    os.path.join(os.environ.get("HOME"), 'wphase'))
+    "WPHASE_HOME", os.path.join(os.environ.get("HOME"), "wphase")
+)
 if not WPHASE_HOME:
-    raise Exception('env var WPHASE_HOME is defined but is blank')
+    raise Exception("env var WPHASE_HOME is defined but is blank")
 
 #: Directory containing the green's functions.
-GREEN_DIR = os.environ.get('WPHASE_GREENS_FUNCTIONS')
+GREEN_DIR = os.environ.get("WPHASE_GREENS_FUNCTIONS")
 
 #: Path to where datasets are saved for posterity.
 WPHASE_SAVED_DATASETS_ROOT = os.environ.get(
-    'WPHASE_SAVED_DATASETS_ROOT',
-    os.path.join(WPHASE_HOME, 'wphase_saved_datasets'))
+    "WPHASE_SAVED_DATASETS_ROOT", os.path.join(WPHASE_HOME, "wphase_saved_datasets")
+)
 if not WPHASE_SAVED_DATASETS_ROOT:
-    raise Exception('env var WPHASE_SAVED_DATASETS_ROOT is defined but is blank')
+    raise Exception("env var WPHASE_SAVED_DATASETS_ROOT is defined but is blank")
 
 #: Path to system test datasets.
 WPHASE_TEST_DATASETS_ROOT = os.environ.get(
-    'WPHASE_TEST_DATASETS_ROOT',
-    os.path.join(WPHASE_HOME, 'wphase_test_data'))
+    "WPHASE_TEST_DATASETS_ROOT", os.path.join(WPHASE_HOME, "wphase_test_data")
+)
 if not WPHASE_TEST_DATASETS_ROOT:
-    raise Exception('env var WPHASE_TEST_DATASETS_ROOT is defined but is blank')
+    raise Exception("env var WPHASE_TEST_DATASETS_ROOT is defined but is blank")
 
 #: Root directory for system test data.
 SYSTEM_TEST_DATA_ROOT_DIR = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), 'tests', 'TEST_DATA')
+    os.path.dirname(os.path.abspath(__file__)), "tests", "TEST_DATA"
+)
 
 #: The number of worker processes to use in :py:class:`multiprocessing.Pool`.
 N_WORKERS_IN_POOL = None
 
 #: The name of the JSON file to contain the output from wphase caclcutions.
-WPHASE_OUTPUT_FILE_NAME = 'wphase_output.json'
+WPHASE_OUTPUT_FILE_NAME = "wphase_output.json"
 
 #: Name of the file that contains the exclude list.
-WPHASE_EXCLUDE_LIST_FILE_NAME = 'exclude_list.json'
+WPHASE_EXCLUDE_LIST_FILE_NAME = "exclude_list.json"
 
 #: wphase intermediate mseed file name.
 WPHASE_MSEED_FILE = "Mini-SEED-traces.mseed"
@@ -84,11 +85,9 @@ WPHASE_MISFIT_PREFIX = "wphase_misfit"
 GA_AUTHORITY = "GA W-phase"
 
 #: The name of the current host.
-WPHASE_HOST_NAME = os.environ.get(
-    'WPHASE_HOST_NAME',
-    'localhost')
+WPHASE_HOST_NAME = os.environ.get("WPHASE_HOST_NAME", "localhost")
 if not WPHASE_HOST_NAME:
-    raise Exception('env var WPHASE_HOST_NAME is defined but is blank')
+    raise Exception("env var WPHASE_HOST_NAME is defined but is blank")
 
 #: Should profiling information for wphase be produced.
 PROFILE_WPHASE = False
@@ -97,41 +96,43 @@ PROFILE_WPHASE = False
 N_TRACES_PER_RESULT_PLOT = 6
 
 #: Key for warnings in the result dictionary.
-WPHASE_WARNINGS_KEY = 'Warnings'
+WPHASE_WARNINGS_KEY = "Warnings"
 
 #: Key for the wphase processing error.
-WPHASE_ERROR_KEY = 'Error'
+WPHASE_ERROR_KEY = "Error"
 
 #: Key for the wphase event description.
-WPHASE_EVENT_KEY = 'Event'
+WPHASE_EVENT_KEY = "Event"
 
 #: Key containing the stack trace.
-WPHASE_ERROR_STACKTRACE_KEY = 'StackTrace'
+WPHASE_ERROR_STACKTRACE_KEY = "StackTrace"
 
 #: Key for the list of wphase results plots.
-RESULTS_PLOTS_KEY = 'WphaseResultPlots'
+RESULTS_PLOTS_KEY = "WphaseResultPlots"
 
 #: Key for the data source.
-WPHASE_DATA_SOURCE_KEY = 'DataSource'
+WPHASE_DATA_SOURCE_KEY = "DataSource"
 
 #: Key containing the wpinv profiling output.
-WPINV_PROFILE_OUTPUT_KEY = 'WPInvProfile'
+WPINV_PROFILE_OUTPUT_KEY = "WPInvProfile"
 
 #: Key containing the misfits.
-MISFIT_KEY = 'Misfits'
+MISFIT_KEY = "Misfits"
 
 #: Key containing the host name.
-HOST_NAME_KEY = 'HostName'
+HOST_NAME_KEY = "HostName"
 
 #: Key for errors caused by Antelope.
-INVERSION_ERROR_KEY = 'InversionError'
+INVERSION_ERROR_KEY = "InversionError"
 
 #: Implementation of bandpass filter to use
-BANDPASS_IMPLEMENTATION = 'scipy'
+BANDPASS_IMPLEMENTATION = "scipy"
+
 
 def safe_make_dir(dirname):
     if not os.path.exists(dirname):
         os.makedirs(dirname)
+
 
 # ensure that all the directories we need to exist do exist.
 safe_make_dir(WPHASE_SAVED_DATASETS_ROOT)

@@ -13,7 +13,7 @@ try:
     import matplotlib
 
     matplotlib.use("Agg")
-except:
+except Exception:
     pass
 
 

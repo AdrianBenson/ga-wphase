@@ -33,7 +33,7 @@ def plot_field(
     show_lons=True,
     ax=None,
     clevs=None,
-    **kwargs
+    **kwargs,
 ):
     """
     Plot the locations considered in the grid search. This is a wrapper for

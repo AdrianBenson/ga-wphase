@@ -25,7 +25,7 @@ def runwphase(
     processing_level=3,
     stations_to_exclude=None,
     output_dir_can_exist=False,
-    **kwargs
+    **kwargs,
 ):
     """
     Run wphase.
@@ -61,7 +61,7 @@ def runwphase(
         processing_level,
         stations_to_exclude,
         output_dir_can_exist,
-        **kwargs
+        **kwargs,
     )
 
     wphase_results[settings.HOST_NAME_KEY] = settings.WPHASE_HOST_NAME

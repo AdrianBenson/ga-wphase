@@ -1,6 +1,6 @@
-'''
+"""
 Core functionality for performing the Wphase inversion.
-'''
+"""
 
 import sys, os, glob, traceback
 from multiprocessing import Pool
@@ -26,12 +26,15 @@ except ImportError:
 
 try:
     from obspy.signal.invsim import paz_2_amplitude_value_of_freq_resp
-except  ImportError:
-    from obspy.signal.invsim import paz2AmpValueOfFreqResp as paz_2_amplitude_value_of_freq_resp
+except ImportError:
+    from obspy.signal.invsim import (
+        paz2AmpValueOfFreqResp as paz_2_amplitude_value_of_freq_resp,
+    )
 
 _greens_function_dir = None
 _bpfunction = None
 _N_TASKS_PER_PROC = None
+
 
 def poolInitialiser(gfdir):
     """
@@ -41,6 +44,7 @@ def poolInitialiser(gfdir):
 
     global _greens_function_dir
     _greens_function_dir = gfdir
+
 
 class WPInvWarning(Exception):
     """
@@ -55,19 +59,13 @@ class WPInvWarning(Exception):
     def __init__(self, msg):
         super(WPInvWarning, self).__init__(msg)
 
+
 class RTdeconvError(Exception):
     pass
 
-def wpinv(
-    st,
-    metadata,
-    eqINFO,
-    gfdir,
-    OL=1,
-    bpf=None,
-    processes=None,
-    output_dic=None):
-    '''
+
+def wpinv(st, metadata, eqINFO, gfdir, OL=1, bpf=None, processes=None, output_dic=None):
+    """
     This function is the main function that will compute the inversion. For
     details of the the algorithm and logic, see `here
     <https://pubs.er.usgs.gov/publication/70045140>`_.
@@ -157,7 +155,7 @@ def wpinv(
             #. Inversion result for each grid point in inputs_latlon
             #. Dictionary with relavant information about the data processing
                 so it can redone easily outside this function.
-    '''
+    """
 
     if output_dic is None:
         output_dic = {}
@@ -169,7 +167,7 @@ def wpinv(
             # but we can't import from that, here, and don't want to import
             # from any non-standard package in atws_wphase.settings, so we just
             # have to manually keep these in sync.
-            WARNINGS_KEY = 'Warnings'
+            WARNINGS_KEY = "Warnings"
             if WARNINGS_KEY not in output_dic:
                 output_dic[WARNINGS_KEY] = []
             output_dic[WARNINGS_KEY].append(msg)
@@ -180,19 +178,21 @@ def wpinv(
     global _bpfunction
     if bpf is None:
         from .bandpass import bandpassfilter
+
         def bpf(sta, data, length, delta, corners, npass, low, high):
             return bandpassfilter(data, delta, corners, low, high)
+
     _bpfunction = bpf
 
     # set the directory where the greens functions live
     global _greens_function_dir
     gfdir = os.path.normpath(gfdir)
-    _greens_function_dir = gfdir #Directory of the Green Functions
+    _greens_function_dir = gfdir  # Directory of the Green Functions
 
     # check if we are using an hdf version of the greens functions
-    if gfdir.split('.')[-1] == 'hdf5':
+    if gfdir.split(".")[-1] == "hdf5":
         hdf5_flag = True
-        with h5py.File(gfdir , "r") as GFfile:
+        with h5py.File(gfdir, "r") as GFfile:
             hdirs_hdf5 = [dep for dep in GFfile]
     else:
         hdf5_flag = False
@@ -202,7 +202,7 @@ def wpinv(
     # greater than this.  see "Source inversion of W phase - speeding up
     # seismic tsunami warning - Kanamori - 2008" in the doc folder of
     # atws_wphase for details on the fitting of the instrument response.
-    response_misfit_tol = 5. #Percent
+    response_misfit_tol = 5.0  # Percent
 
     # time cutoff, seconds/degree from t_p for the Wphase window.
     wphase_cutoff = 15
@@ -217,13 +217,13 @@ def wpinv(
 
     # Maximum time delay in seconds. We'll search for the optimal t_d up to
     # this value.
-    max_t_d = 200.
+    max_t_d = 200.0
 
     # stations where the misfits (100*sqrt(sum(synthetic-observed)^2 /
     # sum(synthetic)^2)) are greater than misfit_tol[0] will be rejected. If
     # any stations remain, then those with misfits greater than misfit_tol[1]
     # will be rejected, and so on.
-    misfit_tol = [300, 200, 100]#, 80, 60, 50]# 40, 30]
+    misfit_tol = [300, 200, 100]  # , 80, 60, 50]# 40, 30]
 
     # Number of points in which the finer search will be performed in OL3. That
     # is the Nfinersearch lat/lons with the lowest misfits will have a finer
@@ -239,46 +239,46 @@ def wpinv(
 
     # Ta and Tb give the corner periords in seconds of the band pass filter
     # used at this stage of processing.
-    Ta = 200.
-    Tb = 1000.
+    Ta = 200.0
+    Tb = 1000.0
 
     # vector of periods to consider in the instrument response fitting.
-    T = np.linspace(Ta,Tb,500)
-    freq = 1./T
+    T = np.linspace(Ta, Tb, 500)
+    freq = 1.0 / T
 
     # convert to angular frequency
-    omega = freq*2.*np.pi
+    omega = freq * 2.0 * np.pi
 
     # create a function to compute the amplitude of the response from poles and
     # zeros.
     Vpaz2freq = np.vectorize(paz_2_amplitude_value_of_freq_resp)
 
-    hyplat = eqINFO['lat']
-    hyplon = eqINFO['lon']
-    hypdep = eqINFO['dep']
-    orig = eqINFO['time']
+    hyplat = eqINFO["lat"]
+    hyplon = eqINFO["lon"]
+    hypdep = eqINFO["dep"]
+    orig = eqINFO["time"]
 
     # Deal with extremly shallow preliminary hypocenter
-    if hypdep < 10.:
-        hypdep = 10.
+    if hypdep < 10.0:
+        hypdep = 10.0
 
-    #In case of multiple locations we favor
+    # In case of multiple locations we favor
     # '00'. This may be improved if we select the one with the longer period
     # sensor.
-    st_sel = st.select(location = '00')
-    st_sel+= st.select(location = '--')
-    st_sel+= st.select(location = '') #Check this.
-    #st_sel = st_sel.select(component = 'Z')
-    #We also want to select stations with one location code which is not the
-    #default (see above).
+    st_sel = st.select(location="00")
+    st_sel += st.select(location="--")
+    st_sel += st.select(location="")  # Check this.
+    # st_sel = st_sel.select(component = 'Z')
+    # We also want to select stations with one location code which is not the
+    # default (see above).
 
-    print('initial number of traces: {}'.format(len(st_sel)))
+    print("initial number of traces: {}".format(len(st_sel)))
 
     # rotate the horizontal components to geographical north or east
     st_sel = rot_12_NE(st_sel, metadata)
 
     # traces to use the preliminary mag calculation
-    st_sel_prem_mag = st_sel.select(component = 'Z').copy()
+    st_sel_prem_mag = st_sel.select(component="Z").copy()
 
     # will contain distances epicenter - station
     DIST = np.array([])
@@ -297,9 +297,9 @@ def wpinv(
     # Instrument deconvolution and bandpass filtering:
     i = 0
     for tr in st_sel_prem_mag:
-        trmeta =  metadata[tr.id]
-        trlat = trmeta['latitude']
-        trlon = trmeta['longitude']
+        trmeta = metadata[tr.id]
+        trlat = trmeta["latitude"]
+        trlon = trmeta["longitude"]
         tr.data = np.array(tr.data, dtype=np.float)
 
         # compute distance in degrees between 2 locations
@@ -310,46 +310,51 @@ def wpinv(
 
         # if p-arrival time is not calculated, then calculate it.
         # WARNING: this can be very slow in new versions of obspy.
-        t_p = trmeta.get('ptime')
+        t_p = trmeta.get("ptime")
         if not t_p:
             from obspy.taup.taup import getTravelTimes
-            t_p =  getTravelTimes(dist,hypdep)[0]['time']
+
+            t_p = getTravelTimes(dist, hypdep)[0]["time"]
 
         # sample period in seconds
         dt = tr.stats.delta
 
         # Wphase (UTC) time window
         t1 = orig + t_p
-        t2 = t1 + dist*wphase_cutoff
+        t2 = t1 + dist * wphase_cutoff
 
         # accounting for the units of the transfer function in the instrument response... see README.
-        if trmeta['transfer_function'] == "B":
-            AmpfromPAZ  = Vpaz2freq(trmeta,freq/2./np.pi)  # hz to rad*hz
-        elif trmeta['transfer_function'] == "A":
-            AmpfromPAZ  = Vpaz2freq(trmeta,freq)
+        if trmeta["transfer_function"] == "B":
+            AmpfromPAZ = Vpaz2freq(trmeta, freq / 2.0 / np.pi)  # hz to rad*hz
+        elif trmeta["transfer_function"] == "A":
+            AmpfromPAZ = Vpaz2freq(trmeta, freq)
         else:
             print("Unknown transfer function. Skipping", tr.id)
             trlist.remove(tr.id)
             continue
 
         # Fitting the instrument response and getting coefficients
-        (om0, h, G) = getCOEFFfit(trmeta['sensitivity'],freq,AmpfromPAZ)
+        (om0, h, G) = getCOEFFfit(trmeta["sensitivity"], freq, AmpfromPAZ)
         if not np.all(np.isfinite([om0, h, G])):
             print("Imposible to get Coeff. Skipping", tr.id)
             trlist.remove(tr.id)
             continue
 
-        AmpfromCOEFF= np.abs(omega*omega / \
-                (omega*omega + 2j*h*om0*omega - om0*om0))
+        AmpfromCOEFF = np.abs(
+            omega * omega / (omega * omega + 2j * h * om0 * omega - om0 * om0)
+        )
 
         # L2 norm:
-        misfit = 100*np.linalg.norm(AmpfromPAZ-AmpfromCOEFF) \
-                / np.linalg.norm(AmpfromPAZ)
+        misfit = (
+            100 * np.linalg.norm(AmpfromPAZ - AmpfromCOEFF) / np.linalg.norm(AmpfromPAZ)
+        )
 
-        if misfit >  response_misfit_tol:
-            print('Bad fitting for response. Skipping:\n{}\t {: E}\n'.format(
-                    tr.id,
-                    misfit))
+        if misfit > response_misfit_tol:
+            print(
+                "Bad fitting for response. Skipping:\n{}\t {: E}\n".format(
+                    tr.id, misfit
+                )
+            )
             continue
 
         # tr.data will cointain the deconvolved and filtered displacements.
@@ -361,11 +366,12 @@ def wpinv(
                 G,
                 dt,
                 corners=4,
-                baselinelen=60./dt,
-                taperlen=10.,
-                fmin=1./Tb,
-                fmax=1./Ta,
-                get_coef=True)
+                baselinelen=60.0 / dt,
+                taperlen=10.0,
+                fmin=1.0 / Tb,
+                fmax=1.0 / Ta,
+                get_coef=True,
+            )
 
         except RTdeconvError as e:
             print(str(e))
@@ -373,29 +379,32 @@ def wpinv(
             continue
 
         # trim to the Wphase time window
-        tr.trim(t1,t2)
-        if len(tr)== 0:
+        tr.trim(t1, t2)
+        if len(tr) == 0:
             print("Empty trace. Skipping", tr.id)
             trlist.remove(tr.id)
             continue
 
         trlist_pre.append(tr.id)
-        tr_p2p.append(tr[:].max()-tr[:].min())
+        tr_p2p.append(tr[:].max() - tr[:].min())
         AZI.append(azi)
         DIST = np.append(DIST, dist)
         i += 1
 
     # Sorting the IDs according to their distance to the source:
-    trlist_pre = [trlist_pre[i] for i in np.argsort(DIST) ]
+    trlist_pre = [trlist_pre[i] for i in np.argsort(DIST)]
     tr_p2p = [tr_p2p[i] for i in np.argsort(DIST)]
     DIST = np.sort(DIST)
     AZI = [AZI[i] for i in np.argsort(DIST)]
 
     # Median rejection
     median_p2p = np.median(tr_p2p)
-    accepted_traces = [i for i in range(len(tr_p2p))
-                         if tr_p2p[i] < median_rejection_coeff[1]*median_p2p
-                         and tr_p2p[i] > median_rejection_coeff[0]*median_p2p]
+    accepted_traces = [
+        i
+        for i in range(len(tr_p2p))
+        if tr_p2p[i] < median_rejection_coeff[1] * median_p2p
+        and tr_p2p[i] > median_rejection_coeff[0] * median_p2p
+    ]
     if not EnoughAzimuthalCoverage():
         raise WPInvWarning("Lack of azimuthal coverage. Aborting.")
     if len(accepted_traces) < N_st_min:
@@ -403,29 +412,31 @@ def wpinv(
 
     # Get the preliminary mag:
     tr_p2p_con = [tr_p2p[i] for i in accepted_traces]
-    DIST_con   = [DIST[i] for i in accepted_traces]
-    AZI_con    = [AZI[i] for i in accepted_traces]
+    DIST_con = [DIST[i] for i in accepted_traces]
+    AZI_con = [AZI[i] for i in accepted_traces]
     trlist_pre_con = [trlist_pre[i] for i in accepted_traces]
     pre_param = preliminarymagnitude(tr_p2p_con, DIST_con, AZI_con)
 
     pre_wp_mag = pre_param[0]
-    pre_M0 =  pre_param[1]
+    pre_M0 = pre_param[1]
     pre_strike = pre_param[2]
     t_h = pre_param[3]
 
     if pre_wp_mag < 6.5:
-        add_warning("Preliminary magnitude less than 6.5... setting it to 6.5 and continuing")
+        add_warning(
+            "Preliminary magnitude less than 6.5... setting it to 6.5 and continuing"
+        )
         pre_wp_mag = 6.5
 
     print("OL1:")
     print("Preliminary W-phase magnitude for the event:", np.round(pre_wp_mag, 1))
 
-    output_dic['OL1'] = {}
-    output_dic['OL1']['magnitude'] = round(pre_wp_mag,1)
-    output_dic['OL1']['nstations'] = len(accepted_traces)
-    output_dic['OL1']['used_traces'] = trlist
+    output_dic["OL1"] = {}
+    output_dic["OL1"]["magnitude"] = round(pre_wp_mag, 1)
+    output_dic["OL1"]["nstations"] = len(accepted_traces)
+    output_dic["OL1"]["used_traces"] = trlist
 
-    if OL==1:
+    if OL == 1:
         return pre_wp_mag, trlist_pre_con, tr_p2p_con
 
     #############  Output Level 2    #######################################
@@ -436,14 +447,14 @@ def wpinv(
     ########################################################################
 
     # Redefine and define some values according to the pre_wp_mag
-    Ta, Tb =   GetCornerFreqsFromMag(pre_wp_mag)
-    T = np.linspace(Ta,Tb,500)
-    freq = 1./T
-    omega = freq*2.*np.pi
+    Ta, Tb = GetCornerFreqsFromMag(pre_wp_mag)
+    T = np.linspace(Ta, Tb, 500)
+    freq = 1.0 / T
+    omega = freq * 2.0 * np.pi
 
     # Build the Moment Rate Function (MRF):
     if hdf5_flag:
-        with h5py.File(_greens_function_dir , "r") as GFfile:
+        with h5py.File(_greens_function_dir, "r") as GFfile:
             dt = GFfile.attrs["dt"]
     else:
         dtDir = os.path.join(_greens_function_dir, "H003.5", "PP", "GF.0001.SY.LHZ.SAC")
@@ -452,38 +463,39 @@ def wpinv(
     MRF = MomentRateFunction(t_h, dt)
 
     # Building a stream with the synthetics and the observed displacements vector
-    tr_p2p = [] #Peak to peak amplitude of each trace.
+    tr_p2p = []  # Peak to peak amplitude of each trace.
 
     # Preparing the data:
     DIST = []
-    DATA_INFO = {} #Minimum info to be able to filter the displacements afterwards
+    DATA_INFO = {}  # Minimum info to be able to filter the displacements afterwards
     for itr, trid in enumerate(trlist[:]):
-        trmeta =  metadata[trid]
-        trlat = trmeta['latitude']
-        trlon = trmeta['longitude']
+        trmeta = metadata[trid]
+        trlat = trmeta["latitude"]
+        trlon = trmeta["longitude"]
         dist = locations2degrees(hyplat, hyplon, trlat, trlon)
-        t_p = trmeta.get('ptime')
+        t_p = trmeta.get("ptime")
         if not t_p:
             from obspy.taup.taup import getTravelTimes
-            t_p =  getTravelTimes(dist,hypdep)[0]['time']
+
+            t_p = getTravelTimes(dist, hypdep)[0]["time"]
         dt = tr.stats.delta
 
         # W-phase time window
         t1 = orig + t_p
-        t2 = t1 + dist*wphase_cutoff
-        tr = st_sel.select(id = trid)[0]
+        t2 = t1 + dist * wphase_cutoff
+        tr = st_sel.select(id=trid)[0]
 
-        tr.data = np.array(tr.data,dtype=np.float)
-        if trmeta['transfer_function'] == "B":
-            AmpfromPAZ  = Vpaz2freq(trmeta,freq/2./np.pi)  # hz to rad*hz
-        elif trmeta['transfer_function'] == "A":
-            AmpfromPAZ  = Vpaz2freq(trmeta,freq)
+        tr.data = np.array(tr.data, dtype=np.float)
+        if trmeta["transfer_function"] == "B":
+            AmpfromPAZ = Vpaz2freq(trmeta, freq / 2.0 / np.pi)  # hz to rad*hz
+        elif trmeta["transfer_function"] == "A":
+            AmpfromPAZ = Vpaz2freq(trmeta, freq)
         else:
             print("Unknown transfer function. Skipping", tr.id)
             trlist.remove(tr.id)
             continue
 
-        (om0, h, G) = getCOEFFfit(trmeta['sensitivity'],freq,AmpfromPAZ)
+        (om0, h, G) = getCOEFFfit(trmeta["sensitivity"], freq, AmpfromPAZ)
         if not np.all(np.isfinite([om0, h, G])):
             print("Imposible to get Coeff. Skipping", tr.id)
             trlist.remove(tr.id)
@@ -497,25 +509,27 @@ def wpinv(
                 om0,
                 h,
                 G,
-                dt,corners=4,
-                baselinelen=60./dt,
-                taperlen= 10.,
-                fmin = 1./Tb,
-                fmax = 1./Ta,
-                get_coef = True)
+                dt,
+                corners=4,
+                baselinelen=60.0 / dt,
+                taperlen=10.0,
+                fmin=1.0 / Tb,
+                fmax=1.0 / Ta,
+                get_coef=True,
+            )
 
         except RTdeconvError as e:
             print(str(e))
             trlist.remove(tr.id)
             continue
 
-        #Check length of the trace:
-        tr.trim(t1,t2)
-        if len(tr)== 0:
+        # Check length of the trace:
+        tr.trim(t1, t2)
+        if len(tr) == 0:
             "Empty trace. Skipping", tr.id
             trlist.remove(tr.id)
             continue
-        tr_p2p.append(tr[:].max()-tr[:].min())
+        tr_p2p.append(tr[:].max() - tr[:].min())
 
         DIST.append(dist)
 
@@ -524,33 +538,35 @@ def wpinv(
     tr_p2p = [tr_p2p[i] for i in np.argsort(DIST)]
 
     # Rejecting outliers:
-    ObservedDisp = np.array([]) # observed displacements vector.
-    Ntrace = [] # A list with the length of each station data.
+    ObservedDisp = np.array([])  # observed displacements vector.
+    Ntrace = []  # A list with the length of each station data.
     trlist2 = trlist[:]
 
     median_AMP = np.median(tr_p2p)
     for i, amp in enumerate(tr_p2p):
-        if (amp > median_AMP*median_rejection_coeff[1]
-        or amp < median_AMP*median_rejection_coeff[0]):
+        if (
+            amp > median_AMP * median_rejection_coeff[1]
+            or amp < median_AMP * median_rejection_coeff[0]
+        ):
             trlist2.remove(trlist[i])
 
         else:
-            tr = st_sel.select(id = trlist[i])[0]
-            ObservedDisp =  np.append(ObservedDisp, tr.data[:],0)
+            tr = st_sel.select(id=trlist[i])[0]
+            ObservedDisp = np.append(ObservedDisp, tr.data[:], 0)
             Ntrace.append(len(tr))
     trlist = trlist2[:]
 
-    'number of traces for OL2 {}'.format(len(trlist))
+    "number of traces for OL2 {}".format(len(trlist))
 
     #### Inversion:
     # Search for the optimal t_d
     ##I need to test the optimal way to do this. map is taking too much time
 
-    pool=Pool(processes, poolInitialiser, (_greens_function_dir,), _N_TASKS_PER_PROC)
+    pool = Pool(processes, poolInitialiser, (_greens_function_dir,), _N_TASKS_PER_PROC)
 
     # time delays for which we will run inversions (finally choosing the one with
     # lowest misfit)
-    time_delays = np.arange(1., max_t_d)
+    time_delays = np.arange(1.0, max_t_d)
 
     # extract the greens function matrix for all time delays. Note that this does not
     # perform an inversion, because OnlyGetFullGF=True.
@@ -568,17 +584,20 @@ def wpinv(
         hdf5_flag,
         OnlyGetFullGF=True,
         Max_t_d=max_t_d,
-        hdirs_hdf5=hdirs_hdf5)
+        hdirs_hdf5=hdirs_hdf5,
+    )
 
     # inputs for the TIME DELAY search
-    inputs = [(t_d_test, GFmatrix, Ntrace, ObservedDisp, max_t_d) for t_d_test in time_delays]
-    misfits = pool.map(get_timedelay_misfit_wrapper,inputs)
+    inputs = [
+        (t_d_test, GFmatrix, Ntrace, ObservedDisp, max_t_d) for t_d_test in time_delays
+    ]
+    misfits = pool.map(get_timedelay_misfit_wrapper, inputs)
     pool.close()
     pool.join()
 
     # Set t_d (time delay) and and t_h (half duration) to optimal values:
-    mis_min =  np.array(misfits).argmin()
-    output_dic['misfits'] = {'min':mis_min, 'array':misfits}
+    mis_min = np.array(misfits).argmin()
+    output_dic["misfits"] = {"min": mis_min, "array": misfits}
     t_d = t_h = time_delays[mis_min]
     MRF = MomentRateFunction(t_h, dt)
     print("Source time function, time delay:", len(MRF), t_d)
@@ -599,22 +618,21 @@ def wpinv(
         trlist,
         hdf5_flag,
         GFs=True,
-        hdirs_hdf5=hdirs_hdf5)
+        hdirs_hdf5=hdirs_hdf5,
+    )
 
     # Remove bad traces
     for tol in misfit_tol:
         # Make sure there are enough channels
         GFmatrix, ObservedDisp, trlist, Ntrace = remove_individual_traces(
-            tol,
-            M,
-            GFmatrix,
-            ObservedDisp,
-            trlist,
-            Ntrace)
+            tol, M, GFmatrix, ObservedDisp, trlist, Ntrace
+        )
 
         if len(trlist) < minium_num_channels:
-            output_dic.pop('OL1', None)
-            msg = "Only {} channels with possibly acceptable fits. Aborting.".format(len(trlist))
+            output_dic.pop("OL1", None)
+            msg = "Only {} channels with possibly acceptable fits. Aborting.".format(
+                len(trlist)
+            )
             print(msg)
             raise WPInvWarning(msg)
 
@@ -623,7 +641,7 @@ def wpinv(
             t_d,
             (hyplat, hyplon, hypdep),
             orig,
-            (Ta,Tb),
+            (Ta, Tb),
             MRF,
             ObservedDisp,
             Ntrace,
@@ -631,222 +649,278 @@ def wpinv(
             trlist,
             hdf5_flag,
             GFs=True,
-            hdirs_hdf5=hdirs_hdf5)
+            hdirs_hdf5=hdirs_hdf5,
+        )
 
-    syn = (M[0]*GFmatrix[:,0] + M[1]*GFmatrix[:,1] +
-           M[3]*GFmatrix[:,2] + M[4]*GFmatrix[:,3] +
-           M[5]*GFmatrix[:,4])
+    syn = (
+        M[0] * GFmatrix[:, 0]
+        + M[1] * GFmatrix[:, 1]
+        + M[3] * GFmatrix[:, 2]
+        + M[4] * GFmatrix[:, 3]
+        + M[5] * GFmatrix[:, 4]
+    )
 
     print("OL2:")
-    print("Mrr: ", '{: e}'.format(M[0]))
-    print("Mtt: ", '{: e}'.format(M[1]))
-    print("Mpp: ", '{: e}'.format(M[2]))
-    print("Mrt: ", '{: e}'.format(M[3]))
-    print("Mrp: ", '{: e}'.format(M[4]))
-    print("Mtp: ", '{: e}'.format(M[5]))
+    print("Mrr: ", "{: e}".format(M[0]))
+    print("Mtt: ", "{: e}".format(M[1]))
+    print("Mpp: ", "{: e}".format(M[2]))
+    print("Mrt: ", "{: e}".format(M[3]))
+    print("Mrp: ", "{: e}".format(M[4]))
+    print("Mtp: ", "{: e}".format(M[5]))
 
     print("misfit: ", misfit)
 
-    M2 = M*M
+    M2 = M * M
     m0 = np.sqrt(0.5 * (M2[0] + M2[1] + M2[2]) + M2[3] + M2[4] + M2[5])
-    mag = 2./3.*(np.log10(m0)-9.10)
+    mag = 2.0 / 3.0 * (np.log10(m0) - 9.10)
     print("m0: ", m0)
     print("magnitude: ", mag)
 
-    output_dic['OL2'] = {}
-    output_dic['OL2']['Mrr']= M[0]
-    output_dic['OL2']['Mtt']= M[1]
-    output_dic['OL2']['Mpp']= M[2]
-    output_dic['OL2']['Mrt']= M[3]
-    output_dic['OL2']['Mrp']= M[4]
-    output_dic['OL2']['Mtp']= M[5]
-    output_dic['OL2']['misfit']= misfit
-    output_dic['OL2']['m0']= m0
-    output_dic['OL2']['magnitude']= round(mag,1)
-    output_dic['OL2']['depth'] = hypdep
-    output_dic['OL2']['time_delay'] = t_d
+    output_dic["OL2"] = {}
+    output_dic["OL2"]["Mrr"] = M[0]
+    output_dic["OL2"]["Mtt"] = M[1]
+    output_dic["OL2"]["Mpp"] = M[2]
+    output_dic["OL2"]["Mrt"] = M[3]
+    output_dic["OL2"]["Mrp"] = M[4]
+    output_dic["OL2"]["Mtp"] = M[5]
+    output_dic["OL2"]["misfit"] = misfit
+    output_dic["OL2"]["m0"] = m0
+    output_dic["OL2"]["magnitude"] = round(mag, 1)
+    output_dic["OL2"]["depth"] = hypdep
+    output_dic["OL2"]["time_delay"] = t_d
 
-    if OL==2:
-        return  M, ObservedDisp, syn, trlist, Ntrace, GFmatrix, DATA_INFO
+    if OL == 2:
+        return M, ObservedDisp, syn, trlist, Ntrace, GFmatrix, DATA_INFO
     else:
-        output_dic['OL2']['M'] = M
+        output_dic["OL2"]["M"] = M
 
     if len(Ntrace) == 0:
         add_warning("Could not calculate OL3: no data within tolerance")
-        return  M, ObservedDisp, syn, trlist, Ntrace, GFmatrix, DATA_INFO
+        return M, ObservedDisp, syn, trlist, Ntrace, GFmatrix, DATA_INFO
 
     #############  Output Level 3   #############################
     ###Moment Tensor based on grid search  ######################
     ###for the optimal centroid's location #####################
 
-    #~ deps_grid = get_depths_for_grid(hypdep)
-    #~ lat_grid, lon_grid = get_latlon_for_grid(hyplat,hyplon)
-    #~
-    #~ deps_grid = get_depths_for_grid(hypdep)
-    #~ lat_grid, lon_grid = get_latlon_for_grid(hyplat,hyplon,dist_lat = 3.0,
-                            #~ dist_lon = 3.0,delta = 0.4)
+    # ~ deps_grid = get_depths_for_grid(hypdep)
+    # ~ lat_grid, lon_grid = get_latlon_for_grid(hyplat,hyplon)
+    # ~
+    # ~ deps_grid = get_depths_for_grid(hypdep)
+    # ~ lat_grid, lon_grid = get_latlon_for_grid(hyplat,hyplon,dist_lat = 3.0,
+    # ~ dist_lon = 3.0,delta = 0.4)
     ##Testing shorcut:
     ##latlon search
-    lat_grid, lon_grid = get_latlon_for_grid(hyplat,hyplon,dist_lat = 3.0,
-                                             dist_lon = 3.0,delta = 0.8)
-    #lat_grid = lat_grid[::2]
-    #lon_grid = lon_grid[::2]
-    pool=Pool(processes, poolInitialiser, (_greens_function_dir,), _N_TASKS_PER_PROC)
-    inputs_latlon = [(t_h,t_d,(hyplatg,hyplong,hypdep), orig, (Ta,Tb),
-              MRF, ObservedDisp, Ntrace, metadata, trlist, hdf5_flag,
-              {'residuals':False,'hdirs_hdf5':hdirs_hdf5})
-              for hyplatg in lat_grid
-              for hyplong in lon_grid]
-    latlon_search = pool.map(core_inversion_wrapper,inputs_latlon)
+    lat_grid, lon_grid = get_latlon_for_grid(
+        hyplat, hyplon, dist_lat=3.0, dist_lon=3.0, delta=0.8
+    )
+    # lat_grid = lat_grid[::2]
+    # lon_grid = lon_grid[::2]
+    pool = Pool(processes, poolInitialiser, (_greens_function_dir,), _N_TASKS_PER_PROC)
+    inputs_latlon = [
+        (
+            t_h,
+            t_d,
+            (hyplatg, hyplong, hypdep),
+            orig,
+            (Ta, Tb),
+            MRF,
+            ObservedDisp,
+            Ntrace,
+            metadata,
+            trlist,
+            hdf5_flag,
+            {"residuals": False, "hdirs_hdf5": hdirs_hdf5},
+        )
+        for hyplatg in lat_grid
+        for hyplong in lon_grid
+    ]
+    latlon_search = pool.map(core_inversion_wrapper, inputs_latlon)
     pool.close()
     pool.join()
 
-    #latlon_search = map(core_inversion_wrapper,inputs_latlon)
+    # latlon_search = map(core_inversion_wrapper,inputs_latlon)
     misfits_latlon = np.array([latlon_search[i][1] for i in range(len(inputs_latlon))])
     cenlat, cenlon = inputs_latlon[misfits_latlon.argsort()[0]][2][:2]
-    moments = latlon_search  #Compatibility
+    moments = latlon_search  # Compatibility
 
     if hdf5_flag:
         deps_grid = get_depths_for_grid_hdf5(hypdep)
     else:
-        deps_grid = get_depths_for_grid(hypdep)#[::2]
+        deps_grid = get_depths_for_grid(hypdep)  # [::2]
 
-    pool=Pool(processes, poolInitialiser, (_greens_function_dir,), _N_TASKS_PER_PROC)
-    inputs_dep = [(t_h,t_d,(cenlat,cenlon,hypdepg), orig, (Ta,Tb),
-              MRF, ObservedDisp, Ntrace, metadata, trlist, hdf5_flag,
-              {'residuals':False,'hdirs_hdf5':hdirs_hdf5})
-              for hypdepg in deps_grid]
+    pool = Pool(processes, poolInitialiser, (_greens_function_dir,), _N_TASKS_PER_PROC)
+    inputs_dep = [
+        (
+            t_h,
+            t_d,
+            (cenlat, cenlon, hypdepg),
+            orig,
+            (Ta, Tb),
+            MRF,
+            ObservedDisp,
+            Ntrace,
+            metadata,
+            trlist,
+            hdf5_flag,
+            {"residuals": False, "hdirs_hdf5": hdirs_hdf5},
+        )
+        for hypdepg in deps_grid
+    ]
 
-    depth_search = pool.map(core_inversion_wrapper,inputs_dep)
+    depth_search = pool.map(core_inversion_wrapper, inputs_dep)
     pool.close()
     pool.join()
 
-    #depth_search = map(core_inversion_wrapper,inputs_dep)
+    # depth_search = map(core_inversion_wrapper,inputs_dep)
     misfits_depth = np.array([depth_search[i][1] for i in range(len(inputs_dep))])
     cendep = deps_grid[misfits_depth.argsort()[0]]
 
-
     #########old grid search
-    #~ deps_grid = get_depths_for_grid(hypdep)[::2]
-    #~ lat_grid, lon_grid = get_latlon_for_grid(hyplat,hyplon,dist_lat = 3.0,
-                            #~ dist_lon = 3.0,delta = 0.4)
-    #~ lat_grid = lat_grid[::2]
-    #~ lon_grid = lon_grid[::2]
-    #~
-    #~ pool=Pool(processes, poolInitialiser, (_greens_function_dir,), _N_TASKS_PER_PROC)
-    #~ inputs = [(t_h,t_d,(hyplatg,hyplong,hypdepg), orig, (Ta,Tb),
-              #~ MRF, ObservedDisp, Ntrace, metadata, trlist, {'residuals':False})
-              #~ for hypdepg in deps_grid
-              #~ for hyplatg in lat_grid
-              #~ for hyplong in lon_grid]
-            #~
-    #~ moments = pool.map(core_inversion_wrapper,inputs)
-    #~ misfits = [moments[i][1] for i in range(len(inputs))]
-    #~ min_misfit_args = np.array(misfits).argsort()[0:Nfinersearch]
-    #~ min_misfit_arg = np.array(misfits).argmin()
-    #~ ####Second (finer) gridsearch:
-    #~ global_min_misfit  = 10. # Initial Value, should be > 1.
-    #~ ## If Nfinersearch = 0 I will not do a finner grid search
-    #~ if len(min_misfit_args) == 0:
-        #~ cenlat = inputs[min_misfit_arg][2][0]
-        #~ cenlon = inputs[min_misfit_arg][2][1]
-        #~ cendep = inputs[min_misfit_arg][2][2]
-    #~ for min_misfit_arg in min_misfit_args:
-        #~ #### Redefining the hyp loc:
-        #~ hyplat = inputs[min_misfit_arg][2][0]
-        #~ hyplon = inputs[min_misfit_arg][2][1]
-        #~ hypdep = inputs[min_misfit_arg][2][2]
-        #~ print "Looking for an optimal centroid location close to:"
-        #~ print hyplat,hyplon,hypdep
-        #~
-        #~ lat_grid, lon_grid = get_latlon_for_grid(hyplat,hyplon, dist_lat = 0.3,
-                                #~ dist_lon = 0.3,delta = 0.1 )
-        #~ deps_grid = get_depths_for_grid(hypdep, length = 30)
-        #~ pool=Pool(processes, poolInitialiser, (_greens_function_dir,), _N_TASKS_PER_PROC)
-        #~ inputs_f = [(t_h,t_d,(hyplatg,hyplong,hypdepg), orig, (Ta,Tb),
-                #~ MRF, ObservedDisp, Ntrace, metadata, trlist, {'residuals':False})
-                #~ for hypdepg in deps_grid
-                #~ for hyplatg in lat_grid
-                #~ for hyplong in lon_grid]
-                #~
-        #~ moments = pool.map(core_inversion_wrapper,inputs_f)
-        #~ misfits = [moments[i][1] for i in range(len(inputs_f))]
-        #~ misfits = np.array(misfits)
-        #~ if misfits.min() < global_min_misfit:
-            #~ min_misfit_arg = misfits.argmin()
-            #~ cenlat = inputs_f[min_misfit_arg][2][0]
-            #~ cenlon = inputs_f[min_misfit_arg][2][1]
-            #~ cendep = inputs_f[min_misfit_arg][2][2]
-            #~ print "Found:", cenlat, cenlon, cendep
-            #~ global_min_misfit = misfits.min()
-        #~ else:
-            #~ cenlat = inputs[min_misfit_arg][2][0]
-            #~ cenlon = inputs[min_misfit_arg][2][1]
-            #~ cendep = inputs[min_misfit_arg][2][2]
+    # ~ deps_grid = get_depths_for_grid(hypdep)[::2]
+    # ~ lat_grid, lon_grid = get_latlon_for_grid(hyplat,hyplon,dist_lat = 3.0,
+    # ~ dist_lon = 3.0,delta = 0.4)
+    # ~ lat_grid = lat_grid[::2]
+    # ~ lon_grid = lon_grid[::2]
+    # ~
+    # ~ pool=Pool(processes, poolInitialiser, (_greens_function_dir,), _N_TASKS_PER_PROC)
+    # ~ inputs = [(t_h,t_d,(hyplatg,hyplong,hypdepg), orig, (Ta,Tb),
+    # ~ MRF, ObservedDisp, Ntrace, metadata, trlist, {'residuals':False})
+    # ~ for hypdepg in deps_grid
+    # ~ for hyplatg in lat_grid
+    # ~ for hyplong in lon_grid]
+    # ~
+    # ~ moments = pool.map(core_inversion_wrapper,inputs)
+    # ~ misfits = [moments[i][1] for i in range(len(inputs))]
+    # ~ min_misfit_args = np.array(misfits).argsort()[0:Nfinersearch]
+    # ~ min_misfit_arg = np.array(misfits).argmin()
+    # ~ ####Second (finer) gridsearch:
+    # ~ global_min_misfit  = 10. # Initial Value, should be > 1.
+    # ~ ## If Nfinersearch = 0 I will not do a finner grid search
+    # ~ if len(min_misfit_args) == 0:
+    # ~ cenlat = inputs[min_misfit_arg][2][0]
+    # ~ cenlon = inputs[min_misfit_arg][2][1]
+    # ~ cendep = inputs[min_misfit_arg][2][2]
+    # ~ for min_misfit_arg in min_misfit_args:
+    # ~ #### Redefining the hyp loc:
+    # ~ hyplat = inputs[min_misfit_arg][2][0]
+    # ~ hyplon = inputs[min_misfit_arg][2][1]
+    # ~ hypdep = inputs[min_misfit_arg][2][2]
+    # ~ print "Looking for an optimal centroid location close to:"
+    # ~ print hyplat,hyplon,hypdep
+    # ~
+    # ~ lat_grid, lon_grid = get_latlon_for_grid(hyplat,hyplon, dist_lat = 0.3,
+    # ~ dist_lon = 0.3,delta = 0.1 )
+    # ~ deps_grid = get_depths_for_grid(hypdep, length = 30)
+    # ~ pool=Pool(processes, poolInitialiser, (_greens_function_dir,), _N_TASKS_PER_PROC)
+    # ~ inputs_f = [(t_h,t_d,(hyplatg,hyplong,hypdepg), orig, (Ta,Tb),
+    # ~ MRF, ObservedDisp, Ntrace, metadata, trlist, {'residuals':False})
+    # ~ for hypdepg in deps_grid
+    # ~ for hyplatg in lat_grid
+    # ~ for hyplong in lon_grid]
+    # ~
+    # ~ moments = pool.map(core_inversion_wrapper,inputs_f)
+    # ~ misfits = [moments[i][1] for i in range(len(inputs_f))]
+    # ~ misfits = np.array(misfits)
+    # ~ if misfits.min() < global_min_misfit:
+    # ~ min_misfit_arg = misfits.argmin()
+    # ~ cenlat = inputs_f[min_misfit_arg][2][0]
+    # ~ cenlon = inputs_f[min_misfit_arg][2][1]
+    # ~ cendep = inputs_f[min_misfit_arg][2][2]
+    # ~ print "Found:", cenlat, cenlon, cendep
+    # ~ global_min_misfit = misfits.min()
+    # ~ else:
+    # ~ cenlat = inputs[min_misfit_arg][2][0]
+    # ~ cenlon = inputs[min_misfit_arg][2][1]
+    # ~ cendep = inputs[min_misfit_arg][2][2]
     ###############End old grid search
 
     ###Final inversion!!
 
-    M, misfit, GFmatrix = core_inversion(t_h,t_d,(cenlat,cenlon,cendep),
-                                orig, (Ta,Tb), MRF, ObservedDisp,
-                                 Ntrace, metadata, trlist, hdf5_flag,
-                                 GFs = True,hdirs_hdf5=hdirs_hdf5)
+    M, misfit, GFmatrix = core_inversion(
+        t_h,
+        t_d,
+        (cenlat, cenlon, cendep),
+        orig,
+        (Ta, Tb),
+        MRF,
+        ObservedDisp,
+        Ntrace,
+        metadata,
+        trlist,
+        hdf5_flag,
+        GFs=True,
+        hdirs_hdf5=hdirs_hdf5,
+    )
 
-    syn = (M[0]*GFmatrix[:,0] + M[1]*GFmatrix[:,1]
-          + M[3]*GFmatrix[:,2] + M[4]*GFmatrix[:,3]
-          + M[5]*GFmatrix[:,4])
-
+    syn = (
+        M[0] * GFmatrix[:, 0]
+        + M[1] * GFmatrix[:, 1]
+        + M[3] * GFmatrix[:, 2]
+        + M[4] * GFmatrix[:, 3]
+        + M[5] * GFmatrix[:, 4]
+    )
 
     print("OL3:")
-    print("Mrr: ", '{: e}'.format(M[0]))
-    print("Mtt: ", '{: e}'.format(M[1]))
-    print("Mpp: ", '{: e}'.format(M[2]))
-    print("Mrt: ", '{: e}'.format(M[3]))
-    print("Mrp: ", '{: e}'.format(M[4]))
-    print("Mtp: ", '{: e}'.format(M[5]))
+    print("Mrr: ", "{: e}".format(M[0]))
+    print("Mtt: ", "{: e}".format(M[1]))
+    print("Mpp: ", "{: e}".format(M[2]))
+    print("Mrt: ", "{: e}".format(M[3]))
+    print("Mrp: ", "{: e}".format(M[4]))
+    print("Mtp: ", "{: e}".format(M[5]))
 
     print("misfit: ", misfit)
 
-    M2 = M*M
-    m0 = np.sqrt(0.5*(M2[0]+M2[1]+M2[2])+M2[3]+M2[4]+M2[5])
-    mag = 2./3.*(np.log10(m0)-9.10)
+    M2 = M * M
+    m0 = np.sqrt(0.5 * (M2[0] + M2[1] + M2[2]) + M2[3] + M2[4] + M2[5])
+    mag = 2.0 / 3.0 * (np.log10(m0) - 9.10)
     print("m0: ", m0)
     print("magnitude: ", mag)
-    cenloc = (cenlat,cenlon,cendep)
+    cenloc = (cenlat, cenlon, cendep)
 
     # QZ
-    output_dic['OL3'] = {}
-    output_dic['OL3']['Mrr']= M[0]
-    output_dic['OL3']['Mtt']= M[1]
-    output_dic['OL3']['Mpp']= M[2]
-    output_dic['OL3']['Mrt']= M[3]
-    output_dic['OL3']['Mrp']= M[4]
-    output_dic['OL3']['Mtp']= M[5]
-    output_dic['OL3']['misfit']= misfit
-    output_dic['OL3']['m0']= m0
-    output_dic['OL3']['magnitude']= round(mag,1)
-    output_dic['OL3']['depth'] = cendep
-    output_dic['OL3']['time_delay'] = t_d
+    output_dic["OL3"] = {}
+    output_dic["OL3"]["Mrr"] = M[0]
+    output_dic["OL3"]["Mtt"] = M[1]
+    output_dic["OL3"]["Mpp"] = M[2]
+    output_dic["OL3"]["Mrt"] = M[3]
+    output_dic["OL3"]["Mrp"] = M[4]
+    output_dic["OL3"]["Mtp"] = M[5]
+    output_dic["OL3"]["misfit"] = misfit
+    output_dic["OL3"]["m0"] = m0
+    output_dic["OL3"]["magnitude"] = round(mag, 1)
+    output_dic["OL3"]["depth"] = cendep
+    output_dic["OL3"]["time_delay"] = t_d
 
-    '''
+    """
     print "****************   output_dic   *****************"
     print output_dic
     print "****************   output_dic   *****************"
-    '''
+    """
 
-    return M, ObservedDisp, syn, trlist, Ntrace, cenloc, t_d, inputs_latlon, moments, DATA_INFO
+    return (
+        M,
+        ObservedDisp,
+        syn,
+        trlist,
+        Ntrace,
+        cenloc,
+        t_d,
+        inputs_latlon,
+        moments,
+        DATA_INFO,
+    )
 
 
 def MomentRateFunction(t_h, dt):
-    '''
+    """
     Get the moment rate function to be convolved with the GFs.
 
     :param float t_h: The half duration.
     :param float dt: The time interval of the GFs.
-    '''
+    """
 
-    trianglen = 2.*int(t_h/dt)-1.
-    #Five must be the minimum len for the triangle
+    trianglen = 2.0 * int(t_h / dt) - 1.0
+    # Five must be the minimum len for the triangle
     if trianglen <= 5:
         trianglen = 5
 
@@ -857,32 +931,31 @@ def MomentRateFunction(t_h, dt):
 
 
 def GetCornerFreqsFromMag(Mw):
-    '''
+    """
     Compute the corner periods required for Wphase
     inversion based on the preliminary Wphase magnitude.
 
     :param float Mw: Preliminary Wphase magnitude.
 
     :rtype: Tuple of two floats.
-    '''
+    """
 
     if Mw >= 8.0:
-        return (200., 1000.)
+        return (200.0, 1000.0)
 
     # Parameters:
-    Short_periods =  np.array([100, 120, 150, 200])
-    Long_periods =  np.array([250, 500, 500, 1000])
+    Short_periods = np.array([100, 120, 150, 200])
+    Long_periods = np.array([250, 500, 500, 1000])
     Magnitudes = np.array([6.5, 7.0, 7.5, 8.0])
 
-    Ta_func = interp1d(Magnitudes, Short_periods, kind = 'cubic')
-    Tb_func = interp1d( Magnitudes, Long_periods, kind = 'cubic')
+    Ta_func = interp1d(Magnitudes, Short_periods, kind="cubic")
+    Tb_func = interp1d(Magnitudes, Long_periods, kind="cubic")
 
     return (Ta_func(Mw), Tb_func(Mw))
 
 
-
 def preliminarymagnitude(tr_p2p, dists, azis):
-    '''
+    """
     Compute the preliminary magnitude.
 
     :param list tr_p2p: Peak to peak amplitudes for each trace.
@@ -895,51 +968,47 @@ def preliminarymagnitude(tr_p2p, dists, azis):
         #. Scalar moment in dyne * cm.
         #. Prelimary estimation for the strike in degrees.
         #. Preliminary half duration for the moment rate func in seconds.
-    '''
+    """
 
     # Parameters:
     # Attenuation relation for W-phase:
-    distance = np.array([5., 10., 20., 30., 40., 50.,
-                         60., 70., 80., 90.5])
-    atten = np.array([1.5, 1.4, 1.2, 1.0, 0.7, 0.56,
-                       0.61, 0.56, 0.50 , 0.52 ])
+    distance = np.array([5.0, 10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.5])
+    atten = np.array([1.5, 1.4, 1.2, 1.0, 0.7, 0.56, 0.61, 0.56, 0.50, 0.52])
 
     # Empirical coeff. for W-phase mag. log A = m*(M_w) + n
-    m = np.log10(0.9/0.065)
-    n = np.log10(0.9)-m*8.5
+    m = np.log10(0.9 / 0.065)
+    n = np.log10(0.9) - m * 8.5
 
     azis = np.array(azis)
     N = len(tr_p2p)
-    azis *= np.pi/180.
-    atten_func =  interp1d(distance,atten, kind = 'cubic')
+    azis *= np.pi / 180.0
+    atten_func = interp1d(distance, atten, kind="cubic")
 
     ## We will solve the system Mx = B in the least squares sense.
-    B = tr_p2p/atten_func(dists)
-    M = np.zeros((N,3))
-    M[:,0] = 1
-    M[:,1] = np.cos(2*azis)
-    M[:,2] = np.sin(2*azis)
-    x = lstsq(M,B, rcond=None)[0]
-    amp = x[0]/2.
+    B = tr_p2p / atten_func(dists)
+    M = np.zeros((N, 3))
+    M[:, 0] = 1
+    M[:, 1] = np.cos(2 * azis)
+    M[:, 2] = np.sin(2 * azis)
+    x = lstsq(M, B, rcond=None)[0]
+    amp = x[0] / 2.0
 
     ###We need to add 3 because we use meters instead of mm.
-    pre_wp_mag = (np.log10(amp)-n+3)/m
-    #Scalar moment in dyne * cm
+    pre_wp_mag = (np.log10(amp) - n + 3) / m
+    # Scalar moment in dyne * cm
     M0 = 10 ** (1.5 * pre_wp_mag + 16.1)
-    t_h = 1.2  * 10** -8. * M0 **(1./3.)
+    t_h = 1.2 * 10 ** -8.0 * M0 ** (1.0 / 3.0)
 
     # I need to check  this. I do not know the convention
     # for the strike I should use.
-    pre_strike = 0.5*np.arctan2(x[2],x[1])*180./np.pi
+    pre_strike = 0.5 * np.arctan2(x[2], x[1]) * 180.0 / np.pi
 
-    return  pre_wp_mag, M0, pre_strike, t_h
-
+    return pre_wp_mag, M0, pre_strike, t_h
 
 
 def EnoughAzimuthalCoverage():
     ##### TO BE IMPLEMENTED
     return True
-
 
 
 def getCOEFFfit(sens, freq, resp):
@@ -954,30 +1023,30 @@ def getCOEFFfit(sens, freq, resp):
     :return: Tuple containing the three time domain deconvolution coefficients.
     """
 
-    X = (2.*np.pi*freq)**2
-    Y = X*X*(1./resp/resp-1.)
-    fit = np.polyfit(X,Y,1)
+    X = (2.0 * np.pi * freq) ** 2
+    Y = X * X * (1.0 / resp / resp - 1.0)
+    fit = np.polyfit(X, Y, 1)
     G = sens
-    om0 = fit[1]**(.25)
-    h = np.sqrt(fit[0]/4./np.sqrt(fit[1]) + 0.5)
+    om0 = fit[1] ** (0.25)
+    h = np.sqrt(fit[0] / 4.0 / np.sqrt(fit[1]) + 0.5)
     return (om0, h, G)
 
 
-
 def RTdeconv(
-        tr,
-        om0,
-        h,
-        G,
-        dt,
-        corners = 4,
-        baselinelen = 60.,
-        taperlen = 10.,
-        fmin = 0.001,
-        fmax = 0.005,
-        get_coef = False,
-        data_type = 'raw'):
-    '''
+    tr,
+    om0,
+    h,
+    G,
+    dt,
+    corners=4,
+    baselinelen=60.0,
+    taperlen=10.0,
+    fmin=0.001,
+    fmax=0.005,
+    get_coef=False,
+    data_type="raw",
+):
+    """
     Using the coef. of one station computes the displacement trace.
 
     :param tr: Data (trace) to be deconvoluted.
@@ -998,58 +1067,58 @@ def RTdeconv(
         'accel' for deconvoluted acceleration.
 
     :return: Time series with the deconvoluted displacement trace
-    '''
+    """
 
-    if G <= 0.:
+    if G <= 0.0:
         # I guess this should never occur, but I was getting division by
         # zero erros in RTdeconv due either this or dt being equal to zero
         raise RTdeconvError("Negative or zero sensitivity, skipping: {}".format(tr.id))
 
-    if dt <= 0.:
+    if dt <= 0.0:
         # I guess this should never occur, but I was getting division by
         # zero erros in RTdeconv due either this or G being equal to zero
         raise RTdeconvError("Negative or sampling rate, skipping: {}".format(tr.id))
 
-    data = np.array(tr.data,dtype='float')
-    sta  = tr.stats.station
+    data = np.array(tr.data, dtype="float")
+    sta = tr.stats.station
 
-    if data_type == 'raw':
-        baseline = np.mean(data[:int(baselinelen/dt)])
-        nwin = int(taperlen*len(data)/100.)
+    if data_type == "raw":
+        baseline = np.mean(data[: int(baselinelen / dt)])
+        nwin = int(taperlen * len(data) / 100.0)
 
-        if len(data) < 2*nwin: nwin = len(data)
+        if len(data) < 2 * nwin:
+            nwin = len(data)
         data -= baseline
 
-        taper = 0.5*(1.-np.cos(np.pi*np.linspace(0.,1.,nwin)))
-        data[:nwin]*= taper
+        taper = 0.5 * (1.0 - np.cos(np.pi * np.linspace(0.0, 1.0, nwin)))
+        data[:nwin] *= taper
 
         datap1 = data[1:]
         datap2 = data[2:]
 
         # Acceleration + double integration
-        c0 = 1./G/dt
-        c1 = -2.*(1. + h*om0*dt)/G/dt
-        c2 = (1. + 2.*h*om0*dt + dt*dt*om0*om0)/G/dt
+        c0 = 1.0 / G / dt
+        c1 = -2.0 * (1.0 + h * om0 * dt) / G / dt
+        c2 = (1.0 + 2.0 * h * om0 * dt + dt * dt * om0 * om0) / G / dt
 
-        aux = c2*datap2 + c1*datap1[:-1] + c0*data[:-2]
-        accel = aux[0]*np.ones(len(data))
+        aux = c2 * datap2 + c1 * datap1[:-1] + c0 * data[:-2]
+        accel = aux[0] * np.ones(len(data))
         accel[2:] = np.cumsum(aux)
-    elif data_type == 'accel':
+    elif data_type == "accel":
         accel = data
 
-    accel = _bpfunction(sta,accel,len(accel),dt ,corners , 1 , fmin,fmax)
+    accel = _bpfunction(sta, accel, len(accel), dt, corners, 1, fmin, fmax)
 
     vel = np.zeros(len(data))
-    vel[1:] = 0.5*dt*np.cumsum(accel[:-1]+accel[1:])
+    vel[1:] = 0.5 * dt * np.cumsum(accel[:-1] + accel[1:])
 
     dis = np.zeros(len(data))
-    dis[1:] = 0.5*dt*np.cumsum(vel[:-1]+vel[1:])
+    dis[1:] = 0.5 * dt * np.cumsum(vel[:-1] + vel[1:])
 
     if get_coef:
-        return dis, (c0,c1,c2)
+        return dis, (c0, c1, c2)
 
     return dis
-
 
 
 def GFSelectZ(dist, hypdepth, GFdir, *args, **kwargs):
@@ -1071,39 +1140,36 @@ def GFSelectZ(dist, hypdepth, GFdir, *args, **kwargs):
         if file[-2:] == ".5":
             depthdir.append(file)
             depth.append(float(file[1:]))
-    BestDirIndex = np.argsort(abs(hypdepth-np.array(depth)))[0]
+    BestDirIndex = np.argsort(abs(hypdepth - np.array(depth)))[0]
     # hdir is the absolute path to the closest deepth.
     hdir = os.path.join(GFdir, depthdir[BestDirIndex])
-    dist_dir =  int(dist*10.+0.5)
+    dist_dir = int(dist * 10.0 + 0.5)
 
     if dist_dir > 900:
-        dist_dir = 900 # We do not have GFs for dist > 90 deg
-    dist_str = str(dist_dir)#Some GFs have only odd dists.
+        dist_dir = 900  # We do not have GFs for dist > 90 deg
+    dist_str = str(dist_dir)  # Some GFs have only odd dists.
 
-
-    #dist_str = str(int(dist*10.))#Some GFs have only odd dists.
+    # dist_str = str(int(dist*10.))#Some GFs have only odd dists.
     dist_form = dist_str.zfill(4)
 
     ## Loading files
     trPPPath = os.path.join(hdir, "PP", "GF." + dist_form + ".SY.LHZ.SAC")
     trPP = read(trPPPath)[0]
-    #trPP.data -= trPP.data[0]
+    # trPP.data -= trPP.data[0]
 
     trRRPath = os.path.join(hdir, "RR", "GF." + dist_form + ".SY.LHZ.SAC")
     trRR = read(trRRPath)[0]
-    #trRR.data -= trRR.data[0]
-
+    # trRR.data -= trRR.data[0]
 
     trRTPath = os.path.join(hdir, "RT", "GF." + dist_form + ".SY.LHZ.SAC")
     trRT = read(trRTPath)[0]
-    #trRT.data -= trRT.data[0]
+    # trRT.data -= trRT.data[0]
 
     trTTPath = os.path.join(hdir, "TT", "GF." + dist_form + ".SY.LHZ.SAC")
     trTT = read(trTTPath)[0]
-    #trTT.data -= trTT.data[0]
+    # trTT.data -= trTT.data[0]
 
-    return (trPP, trRR, trRT,  trTT)
-
+    return (trPP, trRR, trRT, trTT)
 
 
 def MTrotationZ(azi, xxx_todo_changeme):
@@ -1116,35 +1182,48 @@ def MTrotationZ(azi, xxx_todo_changeme):
     :return: Tuple containin the four greens functions corresponding to the vertical component.
     :rtype: Tuple of six arrays.
     """
-    (trPPsy,  trRRsy, trRTsy,  trTTsy) = xxx_todo_changeme
+    (trPPsy, trRRsy, trRTsy, trTTsy) = xxx_todo_changeme
     sinp = np.sin(azi)
     cosp = np.cos(azi)
 
+    # Creating traces for the rotated syn:
+    trRRsy_rot = trRRsy.copy()
+    trPPsy_rot = trPPsy.copy()
+    trTTsy_rot = trTTsy.copy()
+    trTPsy_rot = trTTsy.copy()
+    trRTsy_rot = trRTsy.copy()
+    trRPsy_rot = trPPsy.copy()
 
-	#Creating traces for the rotated syn:
-    trRRsy_rot =   trRRsy.copy()
-    trPPsy_rot =   trPPsy.copy()
-    trTTsy_rot =   trTTsy.copy()
-    trTPsy_rot =   trTTsy.copy()
-    trRTsy_rot =   trRTsy.copy()
-    trRPsy_rot =   trPPsy.copy()
+    # Obtaining the rotated synthetics:
+    trRRsy_rot.data = trRRsy.data
+    trPPsy_rot.data = sinp * sinp * trTTsy.data + cosp * cosp * trPPsy.data
+    trTTsy_rot.data = cosp * cosp * trTTsy.data + sinp * sinp * trPPsy.data
+    trTPsy_rot.data = 2.0 * sinp * cosp * (trTTsy.data - trPPsy.data)
+    trRTsy_rot.data = cosp * trRTsy.data
+    trRPsy_rot.data = sinp * trRTsy.data
 
-    #Obtaining the rotated synthetics:
-    trRRsy_rot.data =   trRRsy.data
-    trPPsy_rot.data =   sinp*sinp*trTTsy.data+cosp*cosp*trPPsy.data
-    trTTsy_rot.data =   cosp*cosp*trTTsy.data+sinp*sinp*trPPsy.data
-    trTPsy_rot.data =   2.*sinp*cosp*(trTTsy.data-trPPsy.data)
-    trRTsy_rot.data =   cosp*trRTsy.data
-    trRPsy_rot.data =   sinp*trRTsy.data
-
-    return [trRRsy_rot, trPPsy_rot,  trTTsy_rot, trTPsy_rot,trRTsy_rot, trRPsy_rot]
+    return [trRRsy_rot, trPPsy_rot, trTTsy_rot, trTPsy_rot, trRTsy_rot, trRPsy_rot]
 
 
-def core_inversion(t_h,t_d,cmtloc,orig, periods, MRF,
-                      ObservedDisp, Ntrace, metadata, trlist,
-                      hdf5_flag, GFs = False, residuals = False,
-                      OnlyGetFullGF=False, Max_t_d = 200, hdirs_hdf5= None):
-    '''
+def core_inversion(
+    t_h,
+    t_d,
+    cmtloc,
+    orig,
+    periods,
+    MRF,
+    ObservedDisp,
+    Ntrace,
+    metadata,
+    trlist,
+    hdf5_flag,
+    GFs=False,
+    residuals=False,
+    OnlyGetFullGF=False,
+    Max_t_d=200,
+    hdirs_hdf5=None,
+):
+    """
     Perform the actual W-phase inversion.
 
     :param float t_h: Half duration of the MRF in seconds.
@@ -1181,7 +1260,7 @@ def core_inversion(t_h,t_d,cmtloc,orig, periods, MRF,
             If *GFs = True*
 
             2. The greens function matrix also.
-    '''
+    """
 
     # Dealing with hdf5 files -  define the functions used to extract greens functions.
     if hdf5_flag:
@@ -1191,7 +1270,7 @@ def core_inversion(t_h,t_d,cmtloc,orig, periods, MRF,
         MTrotationN_ = MTrotationN_hdf5
         GFSelectE_ = GFSelectE_hdf5
         MTrotationE_ = MTrotationE_hdf5
-        with h5py.File(_greens_function_dir , "r") as GFfile:
+        with h5py.File(_greens_function_dir, "r") as GFfile:
             delta = GFfile.attrs["dt"]
     else:
         GFSelectZ_ = GFSelectZ
@@ -1206,20 +1285,21 @@ def core_inversion(t_h,t_d,cmtloc,orig, periods, MRF,
     hyplat = cmtloc[0]
     hyplon = cmtloc[1]
     hypdep = cmtloc[2]
-    Ta     = periods[0]
-    Tb     = periods[1]
+    Ta = periods[0]
+    Tb = periods[1]
 
     # Index of the first value that will be valid after convolution with MRF.
-    FirstValid = int(len(MRF)/2.)
+    FirstValid = int(len(MRF) / 2.0)
 
     # the indicies of the beginning and end of each trace in observed displacements (ObservedDisp)
-    indexes =  np.array(np.concatenate((np.array([0.]), np.cumsum(Ntrace))), dtype='int')
-
+    indexes = np.array(
+        np.concatenate((np.array([0.0]), np.cumsum(Ntrace))), dtype="int"
+    )
 
     if OnlyGetFullGF:
         Max_t_d = int(Max_t_d)
         Nst = len(Ntrace)
-        GFmatrix = np.zeros((np.array(Ntrace, dtype=np.int).sum() + Max_t_d*Nst, 5))
+        GFmatrix = np.zeros((np.array(Ntrace, dtype=np.int).sum() + Max_t_d * Nst, 5))
         tb = 0
     else:
         GFmatrix = np.zeros((np.array(Ntrace, dtype=np.int).sum(), 5))
@@ -1227,69 +1307,73 @@ def core_inversion(t_h,t_d,cmtloc,orig, periods, MRF,
     #### Inversion:
     for i, trid in enumerate(trlist):
         trmeta = metadata[trid]
-        trlat = trmeta['latitude']
-        trlon = trmeta['longitude']
+        trlat = trmeta["latitude"]
+        trlon = trmeta["longitude"]
 
-        try :
-            sta  = trmeta['sta']
+        try:
+            sta = trmeta["sta"]
         except KeyError:
             sta = None
 
         dist = locations2degrees(hyplat, hyplon, trlat, trlon)
-        distm, azi, bazi  =  gps2dist_azimuth(hyplat, hyplon, trlat, trlon)
-        t_p =  trmeta.get('ptime')
+        distm, azi, bazi = gps2dist_azimuth(hyplat, hyplon, trlat, trlon)
+        t_p = trmeta.get("ptime")
 
         if not t_p:
             from obspy.taup.taup import getTravelTimes
-            t_p =  getTravelTimes(dist,hypdep)[0]['time']
+
+            t_p = getTravelTimes(dist, hypdep)[0]["time"]
 
         # Select greens function and perform moment tensor rotation in the azimuth
         # DETAIL: The greens functions are stored for zero azimuth (which we can do
         # because of "symetry properties of a sphere". Then to recover the correct
         # moment tensor (or equivalently synthetic trace) we rotate them. For details
         # see Kanamori and Rivera 2008.
-        if trid[-1] == 'Z':
+        if trid[-1] == "Z":
             syntr = GFSelectZ_(dist, hypdep, _greens_function_dir, hdirs_hdf5)
-            syntrrot = MTrotationZ_(-azi*np.pi/180, syntr)
+            syntrrot = MTrotationZ_(-azi * np.pi / 180, syntr)
         else:
             syntrT = GFSelectN_(dist, hypdep, _greens_function_dir, hdirs_hdf5)
             syntrP = GFSelectE_(dist, hypdep, _greens_function_dir, hdirs_hdf5)
-            syntrrotT = MTrotationN_(-azi*np.pi/180, syntrT)
-            syntrrotP = MTrotationE_(-azi*np.pi/180, syntrP)
+            syntrrotT = MTrotationN_(-azi * np.pi / 180, syntrT)
+            syntrrotP = MTrotationE_(-azi * np.pi / 180, syntrP)
 
             for l in range(6):
                 if hdf5_flag:
-                    syntrrotT[l], syntrrotP[l] = Rot2D(-syntrrotT[l], syntrrotP[l], -bazi)
+                    syntrrotT[l], syntrrotP[l] = Rot2D(
+                        -syntrrotT[l], syntrrotP[l], -bazi
+                    )
                 else:
-                    syntrrotT[l].data, syntrrotP[l].data = Rot2D(-syntrrotT[l].data,
-                                                            syntrrotP[l].data, -bazi)
-            if trid[-1] == '1' or trid[-1] == 'N':
+                    syntrrotT[l].data, syntrrotP[l].data = Rot2D(
+                        -syntrrotT[l].data, syntrrotP[l].data, -bazi
+                    )
+            if trid[-1] == "1" or trid[-1] == "N":
                 syntrrot = syntrrotT
 
-
-            elif trid[-1] == '2' or trid[-1] == 'E':
+            elif trid[-1] == "2" or trid[-1] == "E":
                 syntrrot = syntrrotP
 
         # Extract Wphase from synthetics
-        for i_trR, trR in enumerate(syntrrot): ##Check this loop, seems to be slow.
+        for i_trR, trR in enumerate(syntrrot):  ##Check this loop, seems to be slow.
             if hdf5_flag:
                 data_ = trR
             else:
                 data_ = trR.data
 
             # greens functions are not stored in standard units, convert ot Nm (Newton meters)
-            data_ *= 10.**-21
+            data_ *= 10.0 ** -21
 
             # use only what we think is noise to calculate the mean
             mean = np.mean(data_[:60])
             data_ -= mean
 
-            data_ = ndimage.convolve(data_, MRF, mode='nearest')\
-                            [FirstValid-2:-FirstValid]
+            data_ = ndimage.convolve(data_, MRF, mode="nearest")[
+                FirstValid - 2 : -FirstValid
+            ]
 
             # TODO: look at this... do we want to remove this catch?
             try:
-                fillvec1 = data_[ 0] * np.ones(FirstValid)
+                fillvec1 = data_[0] * np.ones(FirstValid)
                 fillvec2 = data_[-1] * np.ones(FirstValid)
             except:
                 print(FirstValid)
@@ -1297,25 +1381,25 @@ def core_inversion(t_h,t_d,cmtloc,orig, periods, MRF,
             data_ = np.concatenate((fillvec1, data_, fillvec2))
             mean = np.mean(data_[:60])
             data_ -= mean
-            data_ = _bpfunction(sta,data_,len(trR),delta ,4 ,1 , 1./Tb, 1./Ta)
+            data_ = _bpfunction(sta, data_, len(trR), delta, 4, 1, 1.0 / Tb, 1.0 / Ta)
 
             if OnlyGetFullGF:
                 data_ = ltrim(data_, t_p - Max_t_d, delta)
-                data_ = data_[:Ntrace[i] + Max_t_d ]
+                data_ = data_[: Ntrace[i] + Max_t_d]
             else:
                 data_ = ltrim(data_, t_p - t_d, delta)
-                data_ = data_[:Ntrace[i]]
+                data_ = data_[: Ntrace[i]]
             if hdf5_flag:
-                syntrrot[i_trR]  = data_
+                syntrrot[i_trR] = data_
             else:
                 trR.data = data_
 
         if OnlyGetFullGF:
             ta = tb
-            tb = ta + Max_t_d + (indexes[i+1] - indexes[i])
+            tb = ta + Max_t_d + (indexes[i + 1] - indexes[i])
         else:
             ta = indexes[i]
-            tb = indexes[i+1]
+            tb = indexes[i + 1]
 
         # the first of the following lines are due to constraint that volume does not change
         GFmatrix[ta:tb, 0] = syntrrot[0][:] - syntrrot[1][:]
@@ -1332,18 +1416,23 @@ def core_inversion(t_h,t_d,cmtloc,orig, periods, MRF,
     M = inversion[0]
 
     # construct the synthetics
-    syn = (M[0]*GFmatrix[:,0] + M[1]*GFmatrix[:,1]
-        + M[2]*GFmatrix[:,2] + M[3]*GFmatrix[:,3] + M[4]*GFmatrix[:,4])
+    syn = (
+        M[0] * GFmatrix[:, 0]
+        + M[1] * GFmatrix[:, 1]
+        + M[2] * GFmatrix[:, 2]
+        + M[3] * GFmatrix[:, 3]
+        + M[4] * GFmatrix[:, 4]
+    )
 
     # set the 'sixth' element of the moment tensor (corresponds to the
     # constraint added 20 lines or so above)
-    M = np.insert(M, 2, -M[0]-M[1])
+    M = np.insert(M, 2, -M[0] - M[1])
 
     # extract the residuals and scale if required
     if residuals:
         misfit = float(inversion[1])
     else:
-        misfit = 100.*np.sqrt(np.sum((syn-ObservedDisp)**2)/np.sum(syn**2))
+        misfit = 100.0 * np.sqrt(np.sum((syn - ObservedDisp) ** 2) / np.sum(syn ** 2))
 
     if GFs:
         return M, misfit, GFmatrix
@@ -1351,49 +1440,49 @@ def core_inversion(t_h,t_d,cmtloc,orig, periods, MRF,
     return M, misfit
 
 
-
-def get_depths_for_grid(hypdep, length = 100):
-    '''
+def get_depths_for_grid(hypdep, length=100):
+    """
     This function will return a list with the adequate values
     of depth to look at in the grid search
-    '''
+    """
 
     ####Parameters:
-    min_dep = 11. #No shallower depths allowed.
-     # Total length of the section in which we'll search
+    min_dep = 11.0  # No shallower depths allowed.
+    # Total length of the section in which we'll search
     #####
-    depths = sorted([float(dir.split(os.path.sep)[-1][1:])
-              for dir in glob.glob(os.path.join(_greens_function_dir, '*.5'))])
+    depths = sorted(
+        [
+            float(dir.split(os.path.sep)[-1][1:])
+            for dir in glob.glob(os.path.join(_greens_function_dir, "*.5"))
+        ]
+    )
     depths = np.array(depths)
-    depths_grid = depths[np.where(np.abs(depths-hypdep)<length*0.5)]
+    depths_grid = depths[np.where(np.abs(depths - hypdep) < length * 0.5)]
     depths_grid = depths_grid[np.where(depths_grid > min_dep)]
     return depths_grid
 
 
-
-def get_depths_for_grid_hdf5(hypdep, length = 100):
-    '''
+def get_depths_for_grid_hdf5(hypdep, length=100):
+    """
     This function will return a list with the adequate values
     of depth to look at in the grid search
-    '''
+    """
 
     ####Parameters:
-    min_dep = 11. #No shallower depths allowed.
-     # Total length of the section in which we'll search
+    min_dep = 11.0  # No shallower depths allowed.
+    # Total length of the section in which we'll search
     #####
-    with h5py.File(_greens_function_dir , "r") as GFfile:
+    with h5py.File(_greens_function_dir, "r") as GFfile:
         depths = sorted(GFfile.keys())
         depths = np.array([dep[1:] for dep in depths], dtype=np.float)
-        depths_grid = depths[np.where(np.abs(depths-hypdep)<length*0.5)]
+        depths_grid = depths[np.where(np.abs(depths - hypdep) < length * 0.5)]
         depths_grid = depths_grid[np.where(depths_grid > min_dep)]
 
     return depths_grid
 
 
-
-def get_latlon_for_grid(hyplat,hyplon, dist_lat = 1.2,
-                            dist_lon = 1.2,delta = 0.4 ):
-    '''
+def get_latlon_for_grid(hyplat, hyplon, dist_lat=1.2, dist_lon=1.2, delta=0.4):
+    """
     This function will return a list with the adequate values
     of lan and lon to look at in the grid search
 
@@ -1403,22 +1492,21 @@ def get_latlon_for_grid(hyplat,hyplon, dist_lat = 1.2,
 
     :return: Tuple containing the latitudes and longitudes to
         include in the search as numpy arrays.
-    '''
+    """
 
-    lat_grid = np.arange(hyplat-dist_lat,hyplat+dist_lat,delta)
-    lon_grid = np.arange(hyplon-dist_lon,hyplon+dist_lon,delta)
+    lat_grid = np.arange(hyplat - dist_lat, hyplat + dist_lat, delta)
+    lon_grid = np.arange(hyplon - dist_lon, hyplon + dist_lon, delta)
 
     return lat_grid, lon_grid
 
 
-
 def core_inversion_wrapper(allarg):
-    '''
+    """
     Wrapper for :py:func:`core_inversion` for use with
     :py:class:`multiprocessing.Pool`.
 
     :return: None
-    '''
+    """
 
     if isinstance(allarg[-1], dict):
         kwargs = allarg[-1]
@@ -1428,15 +1516,13 @@ def core_inversion_wrapper(allarg):
         arg = allarg
 
     try:
-        return core_inversion(*arg,**kwargs)
+        return core_inversion(*arg, **kwargs)
     except:
         raise Exception("".join(traceback.format_exception(*sys.exc_info())))
 
 
-
-def remove_individual_traces(tol, M, GFmatrix, ObservedDisp,
-                                  trlist, Ntrace):
-    '''
+def remove_individual_traces(tol, M, GFmatrix, ObservedDisp, trlist, Ntrace):
+    """
     Remove any trace with an indivudual misfit higher than *tol*.
 
     :param float tol: The maximum acceptable value for a misfit.
@@ -1454,17 +1540,22 @@ def remove_individual_traces(tol, M, GFmatrix, ObservedDisp,
         #. list of the lengths of the traces in the trace list
 
         for the traces which remain.
-    '''
+    """
 
-    GFmatrix_fix = np.zeros((1,5))
+    GFmatrix_fix = np.zeros((1, 5))
     ObservedDisp_fix = np.zeros(1)
     trlist_fix = []
     Ntrace_fix = []
-    M = np.delete(M,2)
+    M = np.delete(M, 2)
 
     # construct the synthetic trace
-    syn = (M[0]*GFmatrix[:,0] + M[1]*GFmatrix[:,1]+ M[2]*GFmatrix[:,2]
-             + M[3]*GFmatrix[:,3] + M[4]*GFmatrix[:,4])
+    syn = (
+        M[0] * GFmatrix[:, 0]
+        + M[1] * GFmatrix[:, 1]
+        + M[2] * GFmatrix[:, 2]
+        + M[3] * GFmatrix[:, 3]
+        + M[4] * GFmatrix[:, 4]
+    )
     j = 0
     for i, trid in enumerate(trlist):
         # get the observed and synthetic traces for a channel
@@ -1474,20 +1565,19 @@ def remove_individual_traces(tol, M, GFmatrix, ObservedDisp,
         syn2 = syn[n1:n2]
 
         # calculate the misfit for the channel
-        misfit = 100.*np.linalg.norm(syn2-obs)\
-                 /np.linalg.norm(syn2)
+        misfit = 100.0 * np.linalg.norm(syn2 - obs) / np.linalg.norm(syn2)
 
         j += Ntrace[i]
 
         # add the trace to the remaining traces if misfit is within tolerance.
-        if misfit <= tol :
+        if misfit <= tol:
             ObservedDisp_fix = np.append(ObservedDisp_fix, obs)
-            GFmatrix_fix = np.append(GFmatrix_fix, GFmatrix[n1:n2,:], axis=0)
+            GFmatrix_fix = np.append(GFmatrix_fix, GFmatrix[n1:n2, :], axis=0)
             trlist_fix.append(trid)
             Ntrace_fix.append(Ntrace[i])
 
     # build the result
-    GFmatrix = GFmatrix_fix[1:,:]
+    GFmatrix = GFmatrix_fix[1:, :]
     ObservedDisp = ObservedDisp_fix[1:]
     trlist = trlist_fix[:]
     Ntrace = Ntrace_fix[:]
@@ -1496,19 +1586,19 @@ def remove_individual_traces(tol, M, GFmatrix, ObservedDisp,
 
 
 def rot_12_NE(st, META):
-    '''
+    """
     Performs a  12 -> NE rotation.
 
     :param st: A stream containing the traces to rotate.
     :param dict META: Dictionary contaning the metadata for all streams.
 
     :return: The rotated streams.
-    '''
+    """
 
     st2 = st.select(channel="??1")
     for tr in st2:
         id1 = tr.id
-        id2 = id1[:-1] + '2'
+        id2 = id1[:-1] + "2"
         tr1 = tr
         try:
             tr2 = st.select(id=id2)[0]
@@ -1517,15 +1607,14 @@ def rot_12_NE(st, META):
             print(tr.id, "Channel 2 not found. Impossible to rotate")
             continue
 
-        timeA = max(tr1.stats.starttime,tr2.stats.starttime)
-        timeB = min(tr1.stats.endtime,tr2.stats.endtime)
-        tr1.trim(timeA,timeB)
-        tr2.trim(timeA,timeB)
-        azi = META[id1]['azimuth']
-        tr1.data, tr2.data = Rot2D(tr1.data,tr2.data,-azi)
+        timeA = max(tr1.stats.starttime, tr2.stats.starttime)
+        timeB = min(tr1.stats.endtime, tr2.stats.endtime)
+        tr1.trim(timeA, timeB)
+        tr2.trim(timeA, timeB)
+        azi = META[id1]["azimuth"]
+        tr1.data, tr2.data = Rot2D(tr1.data, tr2.data, -azi)
 
     return st
-
 
 
 def GFSelectN(dist, hypdepth, GFdir, *args, **kwargs):
@@ -1536,14 +1625,14 @@ def GFSelectN(dist, hypdepth, GFdir, *args, **kwargs):
         if file[-2:] == ".5":
             depthdir.append(file)
             depth.append(float(file[1:]))
-    BestDirIndex = np.argsort(abs(hypdepth-np.array(depth)))[0]
+    BestDirIndex = np.argsort(abs(hypdepth - np.array(depth)))[0]
     # hdir is the absolute path to the closest deepth.
     hdir = os.path.join(GFdir, depthdir[BestDirIndex])
-    dist_dir =  int(dist*10.+0.5)
+    dist_dir = int(dist * 10.0 + 0.5)
 
     if dist_dir > 900:
-        dist_dir = 900 # We do not have GFs for dist > 90 deg
-    dist_str = str(dist_dir)#Some GFs have only odd dists.
+        dist_dir = 900  # We do not have GFs for dist > 90 deg
+    dist_str = str(dist_dir)  # Some GFs have only odd dists.
     dist_form = dist_str.zfill(4)
 
     ## Loading files
@@ -1552,36 +1641,34 @@ def GFSelectN(dist, hypdepth, GFdir, *args, **kwargs):
     trRT = read(os.path.join(hdir, "RT", "GF." + dist_form + ".SY.LHL.SAC"))[0]
     trTT = read(os.path.join(hdir, "TT", "GF." + dist_form + ".SY.LHL.SAC"))[0]
 
-    return (trPP, trRR, trRT,  trTT)
-
+    return (trPP, trRR, trRT, trTT)
 
 
 def MTrotationN(azi, xxx_todo_changeme1):
-    '''
+    """
     Rotate the Moment Tensor according to the azimuthal angle in radians.
-    '''
-    (trPPsy,  trRRsy, trRTsy,  trTTsy) = xxx_todo_changeme1
+    """
+    (trPPsy, trRRsy, trRTsy, trTTsy) = xxx_todo_changeme1
     sinp = np.sin(azi)
     cosp = np.cos(azi)
 
-	#Creating traces for the rotated syn:
-    trRRsy_rot =   trRRsy.copy()
-    trPPsy_rot =   trPPsy.copy()
-    trTTsy_rot =   trTTsy.copy()
-    trTPsy_rot =   trTTsy.copy()
-    trRTsy_rot =   trRTsy.copy()
-    trRPsy_rot =   trPPsy.copy()
+    # Creating traces for the rotated syn:
+    trRRsy_rot = trRRsy.copy()
+    trPPsy_rot = trPPsy.copy()
+    trTTsy_rot = trTTsy.copy()
+    trTPsy_rot = trTTsy.copy()
+    trRTsy_rot = trRTsy.copy()
+    trRPsy_rot = trPPsy.copy()
 
-    #Obtaining the rotated synthetics:
-    trRRsy_rot.data =   trRRsy.data
-    trPPsy_rot.data =   sinp*sinp*trTTsy.data+cosp*cosp*trPPsy.data
-    trTTsy_rot.data =   cosp*cosp*trTTsy.data+sinp*sinp*trPPsy.data
-    trTPsy_rot.data =   2.*sinp*cosp*(trTTsy.data-trPPsy.data)
-    trRTsy_rot.data =   cosp*trRTsy.data
-    trRPsy_rot.data =   sinp*trRTsy.data
+    # Obtaining the rotated synthetics:
+    trRRsy_rot.data = trRRsy.data
+    trPPsy_rot.data = sinp * sinp * trTTsy.data + cosp * cosp * trPPsy.data
+    trTTsy_rot.data = cosp * cosp * trTTsy.data + sinp * sinp * trPPsy.data
+    trTPsy_rot.data = 2.0 * sinp * cosp * (trTTsy.data - trPPsy.data)
+    trRTsy_rot.data = cosp * trRTsy.data
+    trRPsy_rot.data = sinp * trRTsy.data
 
-    return [trRRsy_rot, trPPsy_rot,  trTTsy_rot, trTPsy_rot,trRTsy_rot, trRPsy_rot]
-
+    return [trRRsy_rot, trPPsy_rot, trTTsy_rot, trTPsy_rot, trRTsy_rot, trRPsy_rot]
 
 
 def GFSelectE(dist, hypdepth, GFdir, *args, **kwargs):
@@ -1592,87 +1679,82 @@ def GFSelectE(dist, hypdepth, GFdir, *args, **kwargs):
         if file[-2:] == ".5":
             depthdir.append(file)
             depth.append(float(file[1:]))
-    BestDirIndex = np.argsort(abs(hypdepth-np.array(depth)))[0]
+    BestDirIndex = np.argsort(abs(hypdepth - np.array(depth)))[0]
     # hdir is the absolute path to the closest depth.
     hdir = os.path.join(GFdir, depthdir[BestDirIndex])
-    dist_dir =  int(dist*10.+0.5)
+    dist_dir = int(dist * 10.0 + 0.5)
 
     if dist_dir > 900:
-        dist_dir = 900 # We do not have GFs for dist > 90 deg
-    dist_str = str(dist_dir)#Some GFs have only odd dists.
+        dist_dir = 900  # We do not have GFs for dist > 90 deg
+    dist_str = str(dist_dir)  # Some GFs have only odd dists.
     dist_form = dist_str.zfill(4)
 
     ## Loading files
     trRP = read(os.path.join(hdir, "RP", "GF." + dist_form + ".SY.LHT.SAC"))[0]
     trTP = read(os.path.join(hdir, "TP", "GF." + dist_form + ".SY.LHT.SAC"))[0]
-    #trRP.data = -trRP.data
-    #trTP.data = -trTP.data
+    # trRP.data = -trRP.data
+    # trTP.data = -trTP.data
 
     return (trRP, trTP)
 
 
-
 def MTrotationE(azi, xxx_todo_changeme2):
-    '''
+    """
     Rotates the Moment Tensor according to the azimuthal angle in radians.
-    '''
+    """
     (trRPsy, trTPsy) = xxx_todo_changeme2
     sinp = np.sin(azi)
     cosp = np.cos(azi)
-    sin2p = np.sin(2.*azi)
-    cos2p = np.cos(2.*azi)
-	#Creating traces for the rotated syn:
-    trRRsy_rot =   trRPsy.copy()
-    trPPsy_rot =   trRPsy.copy()
-    trTTsy_rot =   trRPsy.copy()
-    trTPsy_rot =   trRPsy.copy()
-    trRTsy_rot =   trRPsy.copy()
-    trRPsy_rot =   trRPsy.copy()
-    #Obtaining the rotated synthetics:
-    trRRsy_rot.data[:] =   0.
-    trPPsy_rot.data =   0.5*sin2p*trTPsy.data
-    trTTsy_rot.data =  -0.5*sin2p*trTPsy.data
-    trTPsy_rot.data =   cos2p*trTPsy.data
-    trRTsy_rot.data =   -sinp*trRPsy.data
-    trRPsy_rot.data =  cosp*trRPsy.data
+    sin2p = np.sin(2.0 * azi)
+    cos2p = np.cos(2.0 * azi)
+    # Creating traces for the rotated syn:
+    trRRsy_rot = trRPsy.copy()
+    trPPsy_rot = trRPsy.copy()
+    trTTsy_rot = trRPsy.copy()
+    trTPsy_rot = trRPsy.copy()
+    trRTsy_rot = trRPsy.copy()
+    trRPsy_rot = trRPsy.copy()
+    # Obtaining the rotated synthetics:
+    trRRsy_rot.data[:] = 0.0
+    trPPsy_rot.data = 0.5 * sin2p * trTPsy.data
+    trTTsy_rot.data = -0.5 * sin2p * trTPsy.data
+    trTPsy_rot.data = cos2p * trTPsy.data
+    trRTsy_rot.data = -sinp * trRPsy.data
+    trRPsy_rot.data = cosp * trRPsy.data
 
-    return [trRRsy_rot, trPPsy_rot,  trTTsy_rot, trTPsy_rot,trRTsy_rot, trRPsy_rot]
+    return [trRRsy_rot, trPPsy_rot, trTTsy_rot, trTPsy_rot, trRTsy_rot, trRPsy_rot]
 
 
-
-def MTrot(azi,mt):
-    azi = np.pi/180.* azi
+def MTrot(azi, mt):
+    azi = np.pi / 180.0 * azi
     sinp = np.sin(azi)
     cosp = np.cos(azi)
-    sin2p = np.sin(2.*azi)
-    cos2p = np.cos(2.*azi)
+    sin2p = np.sin(2.0 * azi)
+    cos2p = np.cos(2.0 * azi)
 
-    mtrotpp = mt[1]*cosp**2-2*mt[3]*sinp*cosp+mt[2]*sinp**2
-    mtrottt = mt[1]*sinp**2+2*mt[3]*sinp*cosp+mt[2]*cosp**2
+    mtrotpp = mt[1] * cosp ** 2 - 2 * mt[3] * sinp * cosp + mt[2] * sinp ** 2
+    mtrottt = mt[1] * sinp ** 2 + 2 * mt[3] * sinp * cosp + mt[2] * cosp ** 2
     mtrotrr = float(mt[0])
-    mtrottp = -0.5*(mt[2]-mt[1])*sin2p+mt[3]*cos2p
-    mtrotrp = mt[5]*cosp - mt[4]*sinp
-    mtrotrt = mt[4]*cosp + mt[5]*sinp
+    mtrottp = -0.5 * (mt[2] - mt[1]) * sin2p + mt[3] * cos2p
+    mtrotrp = mt[5] * cosp - mt[4] * sinp
+    mtrotrt = mt[4] * cosp + mt[5] * sinp
 
     return [mtrotrr, mtrotpp, mtrottt, mtrottp, mtrottp, mtrotrt, mtrotrp]
 
 
-
-def Rot2D(x,y,angle):
-    '''
+def Rot2D(x, y, angle):
+    """
     Given 2 vector x,y (same length) it performs a couterclockwise
     2d-rotation in a angle "angle" (degrees) for earch pair of elements
-    '''
-    ang = -angle*np.pi/180.
-    xr =  x*np.cos(ang) - y*np.sin(ang)
-    yr =  x*np.sin(ang) + y*np.cos(ang)
-    return xr,yr
-
+    """
+    ang = -angle * np.pi / 180.0
+    xr = x * np.cos(ang) - y * np.sin(ang)
+    yr = x * np.sin(ang) + y * np.cos(ang)
+    return xr, yr
 
 
 def get_timedelay_misfit_wrapper(args):
     return get_timedelay_misfit(*args)
-
 
 
 def get_timedelay_misfit(t_d, GFmatrix, Ntrace, ObservedDisp, max_t_d):
@@ -1680,21 +1762,20 @@ def get_timedelay_misfit(t_d, GFmatrix, Ntrace, ObservedDisp, max_t_d):
         max_t_d = int(max_t_d)
         t_d = int(t_d)
         t_d2 = max_t_d - t_d
-        GFmatrix_sm = np.zeros((np.array(Ntrace,dtype=np.int).sum(),5))
-        cumNtraces = np.concatenate(([0], np.array(Ntrace,dtype=np.int).cumsum()))
+        GFmatrix_sm = np.zeros((np.array(Ntrace, dtype=np.int).sum(), 5))
+        cumNtraces = np.concatenate(([0], np.array(Ntrace, dtype=np.int).cumsum()))
         tb_fm = 0
         for i_ntr, ta in enumerate(cumNtraces[:-1]):
             trlen = Ntrace[i_ntr]
             tb = ta + trlen
             ta_fm = tb_fm
-            tb_fm = ta_fm +  max_t_d + tb-ta
-            GFmatrix_sm[ta:tb] = GFmatrix[ta_fm + t_d2 :ta_fm + t_d2 + trlen]
+            tb_fm = ta_fm + max_t_d + tb - ta
+            GFmatrix_sm[ta:tb] = GFmatrix[ta_fm + t_d2 : ta_fm + t_d2 + trlen]
 
         inversion = lstsq(GFmatrix_sm, ObservedDisp, rcond=None)
         return inversion[1][0]
     except:
         raise Exception("".join(traceback.format_exception(*sys.exc_info())))
-
 
 
 def GFSelectZ_hdf5(dist, hdir, gfdir, hdirs_hdf5):
@@ -1711,23 +1792,22 @@ def GFSelectZ_hdf5(dist, hdir, gfdir, hdirs_hdf5):
     :rtype: Tuple of four arrays.
     """
 
-    hdir = search_best_hdir_hdf5(hdir,hdirs_hdf5)#This can be done in core inv!
-    #We do not have GF> 90. This is only to prevent the code from crashing!
+    hdir = search_best_hdir_hdf5(hdir, hdirs_hdf5)  # This can be done in core inv!
+    # We do not have GF> 90. This is only to prevent the code from crashing!
     if dist > 90:
         dist = 90
     ###############################################################
-    #Updated to work with the 0.1d spaced GF database
-    #dist_str = str(int(dist*10.)/2*2+1)
-    dist_str =  str(int(dist*10.+0.5))
+    # Updated to work with the 0.1d spaced GF database
+    # dist_str = str(int(dist*10.)/2*2+1)
+    dist_str = str(int(dist * 10.0 + 0.5))
     dist_form = dist_str.zfill(4)
-    with h5py.File(gfdir , "r") as GFfile:
+    with h5py.File(gfdir, "r") as GFfile:
         trPP = GFfile[hdir + "PP/GF." + dist_form + ".SY.LHZ.SAC"][...]
         trRR = GFfile[hdir + "RR/GF." + dist_form + ".SY.LHZ.SAC"][...]
         trRT = GFfile[hdir + "RT/GF." + dist_form + ".SY.LHZ.SAC"][...]
         trTT = GFfile[hdir + "TT/GF." + dist_form + ".SY.LHZ.SAC"][...]
 
-    return (trPP, trRR, trRT,  trTT)
-
+    return (trPP, trRR, trRT, trTT)
 
 
 def MTrotationZ_hdf5(azi, xxx_todo_changeme3):
@@ -1740,19 +1820,17 @@ def MTrotationZ_hdf5(azi, xxx_todo_changeme3):
     :return: Tuple containin the four greens functions corresponding to the vertical component.
     :rtype: Tuple of six arrays.
     """
-    (trPPsy,  trRRsy, trRTsy,  trTTsy) = xxx_todo_changeme3
+    (trPPsy, trRRsy, trRTsy, trTTsy) = xxx_todo_changeme3
     sinp = np.sin(azi)
     cosp = np.cos(azi)
 
-    trRRsy_rot =   trRRsy
-    trPPsy_rot =   sinp*sinp*trTTsy + cosp*cosp*trPPsy
-    trTTsy_rot =   cosp*cosp*trTTsy+sinp*sinp*trPPsy
-    trTPsy_rot =   2.*sinp*cosp*(trTTsy-trPPsy)
-    trRTsy_rot =   cosp*trRTsy
-    trRPsy_rot =   sinp*trRTsy
-    return [trRRsy_rot, trPPsy_rot,  trTTsy_rot,
-            trTPsy_rot,trRTsy_rot, trRPsy_rot]
-
+    trRRsy_rot = trRRsy
+    trPPsy_rot = sinp * sinp * trTTsy + cosp * cosp * trPPsy
+    trTTsy_rot = cosp * cosp * trTTsy + sinp * sinp * trPPsy
+    trTPsy_rot = 2.0 * sinp * cosp * (trTTsy - trPPsy)
+    trRTsy_rot = cosp * trRTsy
+    trRPsy_rot = sinp * trRTsy
+    return [trRRsy_rot, trPPsy_rot, trTTsy_rot, trTPsy_rot, trRTsy_rot, trRPsy_rot]
 
 
 def GFSelectN_hdf5(dist, hdir, gfdir, hdirs_hdf5):
@@ -1769,22 +1847,21 @@ def GFSelectN_hdf5(dist, hdir, gfdir, hdirs_hdf5):
     """
 
     ###I'm considering the decimal .5 in the depths dirs.
-    hdir = search_best_hdir_hdf5(hdir,hdirs_hdf5)#This can be done in core inv!
-    #We do not have GF> 90. This is only to prevent the code from crashing!
+    hdir = search_best_hdir_hdf5(hdir, hdirs_hdf5)  # This can be done in core inv!
+    # We do not have GF> 90. This is only to prevent the code from crashing!
     if dist > 90:
         dist = 90
     ###############################################################
-    dist_str =  str(int(dist*10.+0.5))
+    dist_str = str(int(dist * 10.0 + 0.5))
     dist_form = dist_str.zfill(4)
 
     ## Loading files
-    with h5py.File(gfdir , "r") as GFfile:
-        trPP = GFfile[hdir + "PP/GF." + dist_form + ".SY.LHL.SAC" ][...]
-        trRR = GFfile[hdir + "RR/GF." + dist_form + ".SY.LHL.SAC" ][...]
-        trRT = GFfile[hdir + "RT/GF." + dist_form + ".SY.LHL.SAC" ][...]
-        trTT = GFfile[hdir + "TT/GF." + dist_form + ".SY.LHL.SAC" ][...]
-    return (trPP, trRR, trRT,  trTT)
-
+    with h5py.File(gfdir, "r") as GFfile:
+        trPP = GFfile[hdir + "PP/GF." + dist_form + ".SY.LHL.SAC"][...]
+        trRR = GFfile[hdir + "RR/GF." + dist_form + ".SY.LHL.SAC"][...]
+        trRT = GFfile[hdir + "RT/GF." + dist_form + ".SY.LHL.SAC"][...]
+        trTT = GFfile[hdir + "TT/GF." + dist_form + ".SY.LHL.SAC"][...]
+    return (trPP, trRR, trRT, trTT)
 
 
 def MTrotationN_hdf5(azi, xxx_todo_changeme4):
@@ -1797,22 +1874,21 @@ def MTrotationN_hdf5(azi, xxx_todo_changeme4):
     :return: Tuple containin the four greens functions corresponding to the vertical component.
     :rtype: Tuple of six arrays.
     """
-    (trPPsy,  trRRsy, trRTsy,  trTTsy) = xxx_todo_changeme4
+    (trPPsy, trRRsy, trRTsy, trTTsy) = xxx_todo_changeme4
     sinp = np.sin(azi)
     cosp = np.cos(azi)
-    #Obtaining the rotated synthetics:
-    trRRsy_rot =   trRRsy
-    trPPsy_rot =   sinp*sinp*trTTsy+cosp*cosp*trPPsy
-    trTTsy_rot =   cosp*cosp*trTTsy+sinp*sinp*trPPsy
-    trTPsy_rot =   2.*sinp*cosp*(trTTsy-trPPsy)
-    trRTsy_rot =   cosp*trRTsy
-    trRPsy_rot =   sinp*trRTsy
+    # Obtaining the rotated synthetics:
+    trRRsy_rot = trRRsy
+    trPPsy_rot = sinp * sinp * trTTsy + cosp * cosp * trPPsy
+    trTTsy_rot = cosp * cosp * trTTsy + sinp * sinp * trPPsy
+    trTPsy_rot = 2.0 * sinp * cosp * (trTTsy - trPPsy)
+    trRTsy_rot = cosp * trRTsy
+    trRPsy_rot = sinp * trRTsy
 
-    return [trRRsy_rot, trPPsy_rot,  trTTsy_rot, trTPsy_rot,trRTsy_rot, trRPsy_rot]
+    return [trRRsy_rot, trPPsy_rot, trTTsy_rot, trTPsy_rot, trRTsy_rot, trRPsy_rot]
 
 
-
-def GFSelectE_hdf5(dist, hdir,gfdir,hdirs_hdf5):
+def GFSelectE_hdf5(dist, hdir, gfdir, hdirs_hdf5):
     """
     Loads the Greens function for the given *dist* from a HDF file.
 
@@ -1826,20 +1902,19 @@ def GFSelectE_hdf5(dist, hdir,gfdir,hdirs_hdf5):
     """
 
     ###I'm considering the decimal .5 in the depths dirs.
-    hdir = search_best_hdir_hdf5(hdir,hdirs_hdf5)#This can be done in core inv!
-    #We do not have GF> 90. This is only to prevent the code from crashing!
+    hdir = search_best_hdir_hdf5(hdir, hdirs_hdf5)  # This can be done in core inv!
+    # We do not have GF> 90. This is only to prevent the code from crashing!
     if dist > 90:
         dist = 90
     ###############################################################
-    dist_str =  str(int(dist*10.+0.5))
+    dist_str = str(int(dist * 10.0 + 0.5))
     dist_form = dist_str.zfill(4)
     ## Loading files
-    with h5py.File(gfdir , "r") as GFfile:
+    with h5py.File(gfdir, "r") as GFfile:
         trRP = GFfile[hdir + "RP/GF." + dist_form + ".SY.LHT.SAC"][...]
         trTP = GFfile[hdir + "TP/GF." + dist_form + ".SY.LHT.SAC"][...]
 
     return (trRP, trTP)
-
 
 
 def MTrotationE_hdf5(azi, xxx_todo_changeme5):
@@ -1855,33 +1930,31 @@ def MTrotationE_hdf5(azi, xxx_todo_changeme5):
     (trRPsy, trTPsy) = xxx_todo_changeme5
     sinp = np.sin(azi)
     cosp = np.cos(azi)
-    sin2p = np.sin(2.*azi)
-    cos2p = np.cos(2.*azi)
+    sin2p = np.sin(2.0 * azi)
+    cos2p = np.cos(2.0 * azi)
 
-    #Obtaining the rotated synthetics:
-    trRRsy_rot =   np.zeros(trRPsy.shape,dtype=np.float32)
-    trPPsy_rot =   0.5*sin2p*trTPsy
-    trTTsy_rot =  -0.5*sin2p*trTPsy
-    trTPsy_rot =   cos2p*trTPsy
-    trRTsy_rot =   -sinp*trRPsy
-    trRPsy_rot =  cosp*trRPsy
+    # Obtaining the rotated synthetics:
+    trRRsy_rot = np.zeros(trRPsy.shape, dtype=np.float32)
+    trPPsy_rot = 0.5 * sin2p * trTPsy
+    trTTsy_rot = -0.5 * sin2p * trTPsy
+    trTPsy_rot = cos2p * trTPsy
+    trRTsy_rot = -sinp * trRPsy
+    trRPsy_rot = cosp * trRPsy
 
-    return [trRRsy_rot, trPPsy_rot,  trTTsy_rot, trTPsy_rot,trRTsy_rot, trRPsy_rot]
+    return [trRRsy_rot, trPPsy_rot, trTTsy_rot, trTPsy_rot, trRTsy_rot, trRPsy_rot]
 
 
-
-def search_best_hdir_hdf5(hypdepth,hdirs):
+def search_best_hdir_hdf5(hypdepth, hdirs):
 
     depths = [float(dep[1:]) for dep in hdirs]
-    BestDirIndex = np.argsort(abs(hypdepth-np.array(depths)))[0]
+    BestDirIndex = np.argsort(abs(hypdepth - np.array(depths)))[0]
     hdir_best = hdirs[BestDirIndex] + "/"
     # hdir is the absolute path to the closest deepth.
     return hdir_best
 
 
-
 def ltrim(data, starttime, delta):
-    '''
+    """
     Left trimming similar to obspy but when *data* is a np array.
 
     :param data: one dimensional array to trim.
@@ -1890,13 +1963,12 @@ def ltrim(data, starttime, delta):
     :param float delta: Sampling interval in seconds.
 
     :returns: A view of the relevant subset of *data*.
-    '''
+    """
 
-    i_of = int(round(starttime/delta))
+    i_of = int(round(starttime / delta))
     if i_of < 0:
         gap = np.empty(abs(i_of))
         gap.fill(data[0])
         data = np.concatenate((gap, data))
         return data
     return data[i_of:]
-

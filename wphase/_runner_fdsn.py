@@ -1,6 +1,6 @@
 import sys, os, traceback
-import cPickle as pickle
-from itertools import izip
+import pickle as pickle
+
 
 from obspy.core.utcdatetime import UTCDateTime
 from obspy.clients.fdsn import Client
@@ -150,7 +150,7 @@ def runwphase(
 
     # get the metadata for the server
     if streams is None:
-        print 'creating metadata dict'
+        print('creating metadata dict')
         if inventory is not None:
             if server is None:
                 raise TypeError('server cannot be None if inventory is not None')
@@ -161,7 +161,7 @@ def runwphase(
                     raise ValueError('inventory must be the same length server')
                 metas = [Build_metadata_dict(i) for i in inventory]
                 servers = server
-            elif isinstance(server, basestring):
+            elif isinstance(server, str):
                 metas = [Build_metadata_dict(inventory)]
                 servers = [server]
             else:
@@ -186,7 +186,7 @@ def runwphase(
                 pickle.dump(metadata, inv_out)
         else:
             raise Exception('no metadata avaialable for: \n{}'.format(
-                '\n\t'.join('{}: {}'.format(*kv) for kv in eqinfo.iteritems())))
+                '\n\t'.join('{}: {}'.format(*kv) for kv in eqinfo.items())))
 
         servers = [server]
         metas = [metadata]
@@ -195,8 +195,8 @@ def runwphase(
 
     try:
         if streams is None:
-            for server, metadata in izip(servers, metas):
-                print 'fetching data from {}'.format(server)
+            for server, metadata in zip(servers, metas):
+                print('fetching data from {}'.format(server))
                 # load the data for from the appropriate server
                 streams_, meta_t_p_ = GetData(
                     eqinfo,
@@ -242,9 +242,9 @@ def runwphase(
                 eqinfo = eqinfo,
                 metadata = meta_t_p)
 
-    except WPInvWarning, e:
+    except WPInvWarning as e:
         wphase_output.add_warning(str(e))
-    except Exception, e:
+    except Exception as e:
         wphase_output[settings.WPHASE_ERROR_KEY] = str(e)
         wphase_output[settings.WPHASE_ERROR_STACKTRACE_KEY] = "".join(traceback.format_exception(*sys.exc_info()))
 

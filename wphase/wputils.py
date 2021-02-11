@@ -75,7 +75,7 @@ if settings.PROFILE_WPHASE:
                         timings_file.write(self.profiler.output_html())
 
     except Exception:
-        import cProfile, pstats, StringIO
+        import cProfile, pstats, io
 
         class WPInvProfiler(object):
             def __init__(self, wphase_output, *args, **kwargs):
@@ -88,7 +88,7 @@ if settings.PROFILE_WPHASE:
 
             def __exit__(self, exc_type, esc_value, traceback):
                 self.profiler.disable()
-                s = StringIO.StringIO()
+                s = io.StringIO()
                 ps = pstats.Stats(self.profiler, stream=s).sort_stats(self.sort_by)
                 ps.print_stats()
                 self.wphase_output[settings.WPINV_PROFILE_OUTPUT_KEY] = {
@@ -124,7 +124,7 @@ class OutputDict(defaultdict):
         def _recurse(d):
             if isinstance(d, dict) and not isinstance(d, OutputDict):
                 res = OutputDict()
-                for k, v in d.iteritems():
+                for k, v in list(d.items()):
                     super(OutputDict, res).__setitem__(k, _recurse(v))
                 return res
             elif isinstance(d, np.ndarray):
@@ -148,7 +148,7 @@ class OutputDict(defaultdict):
     def as_dict(self, item=None):
         if item is None:
             return {
-                k: None if v is None else self.as_dict(v) for k, v in self.iteritems()
+                k: None if v is None else self.as_dict(v) for k, v in list(self.items())
             }
         if isinstance(item, OutputDict):
             return item.as_dict()

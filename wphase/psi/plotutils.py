@@ -40,7 +40,7 @@ def topography_colormap(cpool_sea,cpool_land):
     nodes_land= np.linspace(0.5,1,n_col_land)
     nodes = np.concatenate((nodes_sea,nodes_land))
 
-    for rgb, (color, val) in enumerate(color_map.iteritems()):
+    for rgb, (color, val) in enumerate(color_map.items()):
         for i,elem in enumerate(val):
             elem[0] = nodes[i]
             elem[1] = cpool[i,rgb]
@@ -222,8 +222,7 @@ def plot_field(
         output_dic['topography'] = im
     return output_dic
 
-def stacov(
-        (elat, elon),
+def stacov(xxx_todo_changeme,
         lats,
         lons,
         trlist = None,
@@ -232,7 +231,7 @@ def stacov(
         fig = None,
         ax = None):
     """Plot a station coverage map."""
-
+    (elat, elon) = xxx_todo_changeme
     if not fig:
         fig = plt.figure()
 

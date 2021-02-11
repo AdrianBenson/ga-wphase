@@ -353,7 +353,7 @@ def LstArgSort(seq):
     '''
     #http://stackoverflow.com/questions/3382352/equivalent-of-numpy-argsort-in-basic-python/3382369#3382369
     #by ubuntu
-    return sorted(range(len(seq)), key=seq.__getitem__)
+    return sorted(list(range(len(seq))), key=seq.__getitem__)
 
 
 
@@ -421,8 +421,8 @@ def griddataNaN(x,y,z, XX, YY, fill_value = np.nan):
 
     ZZ = np.ones(XX.shape)*fill_value
 
-    coords =  np.array(zip(x,y))
-    grid_coord = np.array(zip(XX.flatten(),YY.flatten()))
+    coords =  np.array(list(zip(x,y)))
+    grid_coord = np.array(list(zip(XX.flatten(),YY.flatten())))
 
     for i, coord in enumerate(coords):
         ZZ[np.unravel_index(np.where(np.all(coord == grid_coord,axis=1)),
